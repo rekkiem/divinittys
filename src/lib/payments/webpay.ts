@@ -1,21 +1,42 @@
 /**
- * Transbank Webpay Integration
+ * Transbank Webpay Plus Integration — SDK v6
  * Docs: https://www.transbankdevelopers.cl/documentacion/webpay-plus
+ * SDK: https://github.com/TransbankDevelopers/transbank-sdk-nodejs
  */
 
-const TRANSBANK_BASE_URL =
-  process.env.TRANSBANK_ENV === 'production'
-    ? 'https://webpay3g.transbank.cl/rswebpaytransaction/api/webpay/v1.2'
-    : 'https://webpay3gint.transbank.cl/rswebpaytransaction/api/webpay/v1.2';
+import {
+  WebpayPlus,
+  Options,
+  Environment,
+  IntegrationCommerceCodes,
+  IntegrationApiKeys,
+} from 'transbank-sdk';
 
-const COMMERCE_CODE = process.env.TRANSBANK_COMMERCE_CODE || '597055555532';
-const API_KEY = process.env.TRANSBANK_API_KEY || '579B532A7440BB0C9079DED94D31EA1615BACEB56610332264630D42D0A36B1C';
+// ── Configuration ──────────────────────────────────────────────────────────
 
-const tbkHeaders = {
-  'Tbk-Api-Key-Id': COMMERCE_CODE,
-  'Tbk-Api-Key-Secret': API_KEY,
-  'Content-Type': 'application/json',
-};
+const isProduction = process.env.TRANSBANK_ENV === 'production';
+
+function getTransaction(): WebpayPlus.Transaction {
+  if (isProduction) {
+    // Production credentials from env
+    const opts = new Options(
+      process.env.TRANSBANK_COMMERCE_CODE!,
+      process.env.TRANSBANK_API_KEY!,
+      Environment.Production
+    );
+    return new WebpayPlus.Transaction(opts);
+  }
+
+  // Integration (test) — uses default integration keys
+  const opts = new Options(
+    IntegrationCommerceCodes.WEBPAY_PLUS,
+    IntegrationApiKeys.WEBPAY,
+    Environment.Integration
+  );
+  return new WebpayPlus.Transaction(opts);
+}
+
+// ── Types ──────────────────────────────────────────────────────────────────
 
 export type WebpayCreateParams = {
   buyOrder: string;
@@ -33,74 +54,50 @@ export type WebpayCommitResponse = {
   vci: string;
   amount: number;
   status: string;
-  buyOrder: string;
-  sessionId: string;
-  cardDetail: { cardNumber: string };
-  accountingDate: string;
-  transactionDate: string;
-  authorizationCode: string;
-  paymentTypeCode: string;
-  responseCode: number;
-  installmentsNumber: number;
+  buy_order: string;
+  session_id: string;
+  card_detail: { card_number: string };
+  accounting_date: string;
+  transaction_date: string;
+  authorization_code: string;
+  payment_type_code: string;
+  response_code: number;
+  installments_number: number;
 };
+
+// ── API ────────────────────────────────────────────────────────────────────
 
 export async function createWebpayTransaction(
   params: WebpayCreateParams
 ): Promise<WebpayCreateResponse> {
-  const res = await fetch(`${TRANSBANK_BASE_URL}/transactions`, {
-    method: 'POST',
-    headers: tbkHeaders,
-    body: JSON.stringify({
-      buy_order: params.buyOrder,
-      session_id: params.sessionId,
-      amount: Math.round(params.amount),
-      return_url: params.returnUrl,
-    }),
-  });
-
-  if (!res.ok) {
-    const error = await res.json();
-    throw new Error(`Webpay error: ${JSON.stringify(error)}`);
-  }
-
-  return res.json();
+  const tx = getTransaction();
+  const response = await tx.create(
+    params.buyOrder,
+    params.sessionId,
+    params.amount,
+    params.returnUrl
+  );
+  return { token: response.token, url: response.url };
 }
 
 export async function commitWebpayTransaction(
   token: string
 ): Promise<WebpayCommitResponse> {
-  const res = await fetch(`${TRANSBANK_BASE_URL}/transactions/${token}`, {
-    method: 'PUT',
-    headers: tbkHeaders,
-  });
-
-  if (!res.ok) {
-    const error = await res.json();
-    throw new Error(`Webpay commit error: ${JSON.stringify(error)}`);
-  }
-
-  return res.json();
+  const tx = getTransaction();
+  return tx.commit(token) as Promise<WebpayCommitResponse>;
 }
 
-export async function getWebpayTransaction(token: string) {
-  const res = await fetch(`${TRANSBANK_BASE_URL}/transactions/${token}`, {
-    method: 'GET',
-    headers: tbkHeaders,
-  });
-
-  return res.json();
+export async function getWebpayTransactionStatus(
+  token: string
+): Promise<WebpayCommitResponse> {
+  const tx = getTransaction();
+  return tx.status(token) as Promise<WebpayCommitResponse>;
 }
 
-export async function refundWebpayTransaction(token: string, amount: number) {
-  const res = await fetch(`${TRANSBANK_BASE_URL}/transactions/${token}/refunds`, {
-    method: 'POST',
-    headers: tbkHeaders,
-    body: JSON.stringify({ amount }),
-  });
-
-  return res.json();
-}
-
-export function isWebpaySuccess(response: WebpayCommitResponse): boolean {
-  return response.status === 'AUTHORIZED' && response.responseCode === 0;
+export async function refundWebpayTransaction(
+  token: string,
+  amount: number
+): Promise<{ type: string; balance?: number }> {
+  const tx = getTransaction();
+  return tx.refund(token, amount) as Promise<{ type: string; balance?: number }>;
 }

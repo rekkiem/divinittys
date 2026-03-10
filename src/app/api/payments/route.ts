@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { createWebpayTransaction, commitWebpayTransaction, isWebpaySuccess } from '@/lib/payments/webpay';
+import { createWebpayTransaction, commitWebpayTransaction } from '@/lib/payments/webpay';
 import { createMPPreference } from '@/lib/payments/mercadopago';
 import { ok, badRequest, notFound, serverError } from '@/lib/utils/api';
 
@@ -34,11 +34,7 @@ export async function POST(req: NextRequest) {
 
       await prisma.payment.update({
         where: { orderId },
-        data: {
-          token: tbkResponse.token,
-          status: 'PROCESSING',
-          provider: 'WEBPAY',
-        },
+        data: { token: tbkResponse.token, status: 'PROCESSING', provider: 'WEBPAY' },
       });
 
       return ok({ token: tbkResponse.token, url: tbkResponse.url });
@@ -57,16 +53,22 @@ export async function POST(req: NextRequest) {
 
       const tbkResult = await commitWebpayTransaction(token_ws);
 
-      if (isWebpaySuccess(tbkResult)) {
+      // response_code === 0 means approved in Webpay SDK v6
+      const isApproved =
+        tbkResult &&
+        (tbkResult as any).response_code === 0 &&
+        (tbkResult as any).status === 'AUTHORIZED';
+
+      if (isApproved) {
         await prisma.$transaction(async (tx) => {
           await tx.payment.update({
             where: { id: payment.id },
             data: {
               status: 'PAID',
-              externalId: tbkResult.authorizationCode,
-              authCode: tbkResult.authorizationCode,
-              installments: tbkResult.installmentsNumber || 1,
-              paymentMethod: tbkResult.paymentTypeCode,
+              externalId: (tbkResult as any).authorization_code,
+              authCode: (tbkResult as any).authorization_code,
+              installments: (tbkResult as any).installments_number || 1,
+              paymentMethod: (tbkResult as any).payment_type_code,
               responseData: tbkResult as any,
               paidAt: new Date(),
             },
@@ -74,13 +76,9 @@ export async function POST(req: NextRequest) {
 
           await tx.order.update({
             where: { id: payment.orderId },
-            data: {
-              status: 'CONFIRMED',
-              paymentStatus: 'PAID',
-            },
+            data: { status: 'CONFIRMED', paymentStatus: 'PAID' },
           });
 
-          // Confirm inventory
           const orderItems = await tx.orderItem.findMany({
             where: { orderId: payment.orderId },
           });
@@ -101,13 +99,12 @@ export async function POST(req: NextRequest) {
           where: { id: payment.id },
           data: { status: 'FAILED', responseData: tbkResult as any },
         });
-
         await prisma.order.update({
           where: { id: payment.orderId },
           data: { paymentStatus: 'FAILED' },
         });
 
-        return ok({ success: false, message: 'Pago rechazado' });
+        return ok({ success: false, message: 'Pago rechazado por Transbank' });
       }
     }
 
@@ -147,11 +144,7 @@ export async function POST(req: NextRequest) {
 
       await prisma.payment.update({
         where: { orderId },
-        data: {
-          externalId: mpResponse.id,
-          status: 'PROCESSING',
-          provider: 'MERCADOPAGO',
-        },
+        data: { externalId: mpResponse.id, status: 'PROCESSING', provider: 'MERCADOPAGO' },
       });
 
       return ok({
@@ -187,7 +180,6 @@ export async function GET(req: NextRequest) {
         const payment = await prisma.payment.findFirst({
           where: { externalId: mpPayment.preference_id },
         });
-
         if (payment) {
           await prisma.payment.update({
             where: { id: payment.id },

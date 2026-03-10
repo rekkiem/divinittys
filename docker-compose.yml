@@ -1,4 +1,28 @@
+# ============================================================
+# DIVINITTYS - Docker Compose
+# ============================================================
+# Ejecutar con: docker compose up --build
+# App:          http://localhost:3000
+# Admin:        http://localhost:3000/admin
+#               admin@divinittys.cl / Admin123!@#
+# MinIO UI:     http://localhost:9001
+#
+# ──────────────────────────────────────────────────────────
+# ⚠️  CONFLICTOS DE PUERTOS
+# Si ya tienes servicios en estos puertos, agrega un .env:
+#
+#   PORT_APP=3001
+#   PORT_POSTGRES=5433
+#   PORT_MINIO=9100
+#   PORT_MINIO_CONSOLE=9101
+#
+# Redis NO expone puertos al host (solo acceso interno).
+# Si necesitas redis-cli externo, agrega: PORT_REDIS=6380
+# ============================================================
+
 services:
+
+  # ── PostgreSQL ───────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     container_name: divinittys_db
@@ -11,27 +35,35 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "5432:5432"
+      - "${PORT_POSTGRES:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-divinittys} -d ${POSTGRES_DB:-divinittys}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - divinittys_net
 
+  # ── Redis (SIN puerto al host — acceso solo interno) ─────
   redis:
     image: redis:7-alpine
     container_name: divinittys_redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    command: redis-server --save 60 1 --loglevel warning
     volumes:
       - redis_data:/data
+    # Solo descomenta si necesitas redis-cli desde fuera de Docker:
+    # ports:
+    #   - "${PORT_REDIS:-6380}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - divinittys_net
 
+  # ── MinIO (Object Storage) ───────────────────────────────
   minio:
     image: minio/minio:latest
     container_name: divinittys_storage
@@ -43,9 +75,17 @@ services:
     volumes:
       - minio_data:/data
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${PORT_MINIO:-9000}:9000"
+      - "${PORT_MINIO_CONSOLE:-9001}:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - divinittys_net
 
+  # ── Next.js App ──────────────────────────────────────────
   app:
     build:
       context: .
@@ -60,6 +100,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:-super_secret_jwt_key_change_in_production}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-super_secret_refresh_key_change_in_production}
       NODE_ENV: development
+      NEXT_TELEMETRY_DISABLED: "1"
+      # Servicios opcionales — el sistema funciona sin ellos
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       TRANSBANK_API_KEY: ${TRANSBANK_API_KEY:-579B532A7440BB0C9079DED94D31EA1615BACEB56610332264630D42D0A36B1C}
       TRANSBANK_COMMERCE_CODE: ${TRANSBANK_COMMERCE_CODE:-597055555532}
@@ -78,11 +120,13 @@ services:
       - /app/node_modules
       - /app/.next
     ports:
-      - "3000:3000"
+      - "${PORT_APP:-3000}:3000"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     command: >
       sh -c "
@@ -93,6 +137,8 @@ services:
         echo '🚀 Starting dev server...' &&
         npm run dev
       "
+    networks:
+      - divinittys_net
 
 volumes:
   postgres_data:
@@ -100,5 +146,6 @@ volumes:
   minio_data:
 
 networks:
-  default:
+  divinittys_net:
     name: divinittys_network
+    driver: bridge
