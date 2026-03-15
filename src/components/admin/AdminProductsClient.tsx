@@ -14,7 +14,6 @@ type Product = {
   sku: string | null;
   price?: number;
   basePrice?: number;
-  basePrice?: number;
   comparePrice: number | null;
   isActive: boolean;
   isFeatured: boolean;
