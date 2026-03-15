@@ -90,7 +90,7 @@
   .card-product {
     @apply bg-card rounded-2xl overflow-hidden border border-border/50
            hover:border-primary-200 hover:shadow-xl hover:shadow-primary-500/10
-           transition-all duration-300 group;
+           transition-all duration-300;
   }
 
   .input-field {
