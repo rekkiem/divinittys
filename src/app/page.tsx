@@ -1,3 +1,5 @@
+export const revalidate = 300;
+
 import { Suspense } from 'react';
 import { prisma } from '@/lib/prisma';
 import HeroSection from '@/components/shop/HeroSection';
