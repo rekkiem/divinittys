@@ -118,7 +118,6 @@ services:
     volumes:
       - .:/app
       - /app/node_modules
-      - /app/.next
     ports:
       - "${PORT_APP:-3000}:3000"
     depends_on:
@@ -130,6 +129,8 @@ services:
         condition: service_healthy
     command: >
       sh -c "
+        echo '📁 Preparing directories...' &&
+        mkdir -p .next/cache &&
         echo '⏳ Running migrations...' &&
         npx prisma migrate deploy &&
         echo '🌱 Running seed...' &&

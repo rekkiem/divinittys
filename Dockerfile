@@ -9,14 +9,16 @@ WORKDIR /app
 # ---- Dependencies ----
 FROM base AS deps
 COPY package.json ./
-# Use npm install (not ci) since package-lock.json may not exist
-RUN npm install
+# Install ALL dependencies (including devDeps needed for CSS build in dev)
+RUN npm install --include=dev
 
 # ---- Development ----
 FROM base AS development
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate
+# Pre-create .next/cache to avoid ENOENT on volume mount
+RUN mkdir -p .next/cache
 EXPOSE 3000
 ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
