@@ -10,8 +10,8 @@ type Product = {
   id: string;
   name: string;
   slug: string;
-  basePrice: number | string;
-  comparePrice?: number | string | null;
+  basePrice: number | string | { toString(): string };
+  comparePrice?: number | string | { toString(): string } | null;
   images: { url: string }[];
   brand?: { name: string } | null;
 };

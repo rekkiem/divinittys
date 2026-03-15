@@ -16,7 +16,9 @@
     "db:reset": "prisma migrate reset",
     "import:products": "npx tsx scripts/import-products.ts",
     "generate": "prisma generate",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "worker": "tsx src/workers/index.ts",
+    "search:reindex": "tsx scripts/reindex-search.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.600.0",

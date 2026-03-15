@@ -1,3 +1,7 @@
+export const dynamic = 'force-dynamic';
+
+export const revalidate = 300;
+
 import { Suspense } from 'react';
 import { prisma } from '@/lib/prisma';
 import HeroSection from '@/components/shop/HeroSection';
@@ -11,7 +15,8 @@ import OffersBanner from '@/components/shop/OffersBanner';
 import BrandsCarousel from '@/components/shop/BrandsCarousel';
 
 async function getHomeData() {
-  const [featuredProducts, categories, brands, onSaleProducts] = await Promise.all([
+  try {
+    const [featuredProducts, categories, brands, onSaleProducts] = await Promise.all([
     prisma.product.findMany({
       where: { isActive: true, isFeatured: true },
       include: {
@@ -44,7 +49,11 @@ async function getHomeData() {
     }),
   ]);
 
-  return { featuredProducts, categories, brands, onSaleProducts };
+    return { featuredProducts, categories, brands, onSaleProducts };
+  } catch (error) {
+    console.error('Home data fallback due to unavailable database:', error);
+    return { featuredProducts: [], categories: [], brands: [], onSaleProducts: [] };
+  }
 }
 
 export default async function HomePage() {

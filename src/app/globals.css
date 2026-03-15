@@ -4,6 +4,8 @@
 
 @layer base {
   :root {
+  --font-plus-jakarta: 'Plus Jakarta Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-cormorant: 'Cormorant Garamond', 'Times New Roman', serif;
     --background: 30 20% 99%;
     --foreground: 0 0% 10%;
     --card: 30 20% 99%;
@@ -90,7 +92,7 @@
   .card-product {
     @apply bg-card rounded-2xl overflow-hidden border border-border/50
            hover:border-primary-200 hover:shadow-xl hover:shadow-primary-500/10
-           transition-all duration-300 group;
+           transition-all duration-300;
   }
 
   .input-field {

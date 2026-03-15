@@ -15,14 +15,15 @@ type ProductCardProps = {
     id: string;
     name: string;
     slug: string;
-    basePrice: number | string;
-    comparePrice?: number | string | null;
+    basePrice: number | string | { toString(): string };
+    comparePrice?: number | string | { toString(): string } | null;
     isOnSale?: boolean;
     isFeatured?: boolean;
     images: { url: string; alt?: string | null }[];
     brand?: { name: string } | null;
     inventory?: { stock: number } | null;
     category?: { name: string; slug: string } | null;
+    vendor?: { storeName: string } | null;
   };
   index?: number;
 };
@@ -138,6 +139,10 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
 
           {/* Info */}
           <div className="p-4 space-y-2">
+            {product.vendor && (
+              <p className="font-sans text-[11px] text-muted-foreground">Vendido por {product.vendor.storeName}</p>
+            )}
+
             {product.brand && (
               <p className="font-sans text-xs font-semibold text-primary-500 tracking-wider uppercase">
                 {product.brand.name}

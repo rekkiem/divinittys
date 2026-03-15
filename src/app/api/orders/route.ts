@@ -1,8 +1,10 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { getAuthUser } from '@/lib/auth';
 import { ok, created, badRequest, unauthorized, serverError, generateOrderNumber } from '@/lib/utils/api';
+import { emailQueue } from '@/lib/queue/email.queue';
 
 const createOrderSchema = z.object({
   items: z.array(z.object({
@@ -68,6 +70,7 @@ export async function POST(req: NextRequest) {
         inventory: true,
         variants: true,
         images: { where: { isMain: true }, take: 1 },
+        vendor: true,
       },
     });
 
@@ -77,7 +80,7 @@ export async function POST(req: NextRequest) {
 
     // Calculate totals
     let subtotal = 0;
-    const orderItems = [];
+    const orderItems: Prisma.OrderItemUncheckedCreateWithoutOrderInput[] = [];
 
     for (const item of data.items) {
       const product = products.find((p) => p.id === item.productId)!;
@@ -95,6 +98,10 @@ export async function POST(req: NextRequest) {
       const total = price * item.quantity;
       subtotal += total;
 
+      const commissionRate = Number(product.vendor?.commissionRate ?? process.env.VENDOR_COMMISSION_DEFAULT ?? 0.15);
+      const commissionAmount = total * commissionRate;
+      const vendorAmount = total - commissionAmount;
+
       orderItems.push({
         productId: item.productId,
         variantId: item.variantId,
@@ -104,6 +111,9 @@ export async function POST(req: NextRequest) {
         price,
         quantity: item.quantity,
         total,
+        vendorId: product.vendorId,
+        commissionAmount,
+        vendorAmount,
       });
     }
 
@@ -199,6 +209,13 @@ export async function POST(req: NextRequest) {
 
       return newOrder;
     });
+
+    if (data.shippingData.email) {
+      await emailQueue.add('order-confirmed', {
+        email: data.shippingData.email,
+        orderNumber: order.orderNumber,
+      });
+    }
 
     return created({ order });
   } catch (error) {
