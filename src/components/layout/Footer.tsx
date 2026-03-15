@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Sparkles, Instagram, Facebook, Youtube, MapPin, Phone, Mail } from 'lucide-react';
+import NewsletterForm from './NewsletterForm';
 
 const footerLinks = {
   productos: [
@@ -58,6 +59,8 @@ export default function Footer() {
                 </div>
               ))}
             </div>
+
+            <NewsletterForm />
 
             {/* Social */}
             <div className="flex gap-3">
