@@ -4,6 +4,8 @@
 
 @layer base {
   :root {
+  --font-plus-jakarta: 'Plus Jakarta Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-cormorant: 'Cormorant Garamond', 'Times New Roman', serif;
     --background: 30 20% 99%;
     --foreground: 0 0% 10%;
     --card: 30 20% 99%;
