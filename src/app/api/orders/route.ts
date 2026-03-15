@@ -80,7 +80,8 @@ export async function POST(req: NextRequest) {
 
     // Calculate totals
     let subtotal = 0;
-    const orderItems: Prisma.OrderItemUncheckedCreateWithoutOrderInput[] = [];
+
+    const orderItems: Array<Record<string, unknown>> = [];
 
     for (const item of data.items) {
       const product = products.find((p) => p.id === item.productId)!;
