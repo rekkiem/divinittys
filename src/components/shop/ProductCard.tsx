@@ -23,6 +23,7 @@ type ProductCardProps = {
     brand?: { name: string } | null;
     inventory?: { stock: number } | null;
     category?: { name: string; slug: string } | null;
+    vendor?: { storeName: string } | null;
   };
   index?: number;
 };
@@ -138,6 +139,10 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
 
           {/* Info */}
           <div className="p-4 space-y-2">
+            {product.vendor && (
+              <p className="font-sans text-[11px] text-muted-foreground">Vendido por {product.vendor.storeName}</p>
+            )}
+
             {product.brand && (
               <p className="font-sans text-xs font-semibold text-primary-500 tracking-wider uppercase">
                 {product.brand.name}
