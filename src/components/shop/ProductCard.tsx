@@ -15,8 +15,8 @@ type ProductCardProps = {
     id: string;
     name: string;
     slug: string;
-    basePrice: number | string;
-    comparePrice?: number | string | null;
+    basePrice: number | string | { toString(): string };
+    comparePrice?: number | string | { toString(): string } | null;
     isOnSale?: boolean;
     isFeatured?: boolean;
     images: { url: string; alt?: string | null }[];

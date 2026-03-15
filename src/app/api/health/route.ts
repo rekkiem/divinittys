@@ -1,3 +1,6 @@
+
+export const dynamic = 'force-dynamic';
+
 import { prisma } from '@/lib/prisma';
 import { getRedisClient } from '@/lib/redis/client';
 import { ok, serverError } from '@/lib/utils/api';

@@ -1,3 +1,6 @@
+
+export const dynamic = 'force-dynamic';
+
 export const revalidate = 300;
 
 import { Suspense } from 'react';
@@ -13,7 +16,8 @@ export const metadata = {
 };
 
 async function getFiltersData() {
-  const [categories, brands, priceRange] = await Promise.all([
+  try {
+    const [categories, brands, priceRange] = await Promise.all([
     prisma.category.findMany({
       where: { isActive: true },
       orderBy: { name: 'asc' },
@@ -31,12 +35,16 @@ async function getFiltersData() {
     }),
   ]);
 
-  return {
-    categories,
-    brands,
-    minPrice: Number(priceRange._min.basePrice || 0),
-    maxPrice: Number(priceRange._max.basePrice || 100000),
-  };
+    return {
+      categories,
+      brands,
+      minPrice: Number(priceRange._min.basePrice || 0),
+      maxPrice: Number(priceRange._max.basePrice || 100000),
+    };
+  } catch (error) {
+    console.error('Filters fallback due to unavailable database:', error);
+    return { categories: [], brands: [], minPrice: 0, maxPrice: 100000 };
+  }
 }
 
 export default async function ProductsPage({

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { getAuthUser } from '@/lib/auth';
 import { ok, created, badRequest, unauthorized, serverError, generateOrderNumber } from '@/lib/utils/api';
 import { emailQueue } from '@/lib/queue/email.queue';
@@ -79,6 +80,7 @@ export async function POST(req: NextRequest) {
 
     // Calculate totals
     let subtotal = 0;
+
     const orderItems: Array<Record<string, unknown>> = [];
 
     for (const item of data.items) {

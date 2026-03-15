@@ -37,7 +37,11 @@ export default async function ProductsGrid({
   };
   const orderBy = sortMap[searchParams.sort || 'newest'] || { createdAt: 'desc' };
 
-  const [products, total] = await prisma.$transaction([
+  let products: any[] = [];
+  let total = 0;
+
+  try {
+    [products, total] = await prisma.$transaction([
     prisma.product.findMany({
       where,
       take: PAGE_SIZE,
@@ -52,6 +56,12 @@ export default async function ProductsGrid({
     }),
     prisma.product.count({ where }),
   ]);
+
+  } catch (error) {
+    console.error('Products grid fallback due to unavailable database:', error);
+    products = [];
+    total = 0;
+  }
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
