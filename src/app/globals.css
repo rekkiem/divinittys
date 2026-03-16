@@ -4,8 +4,6 @@
 
 @layer base {
   :root {
-  --font-plus-jakarta: 'Plus Jakarta Sans', 'Segoe UI', system-ui, sans-serif;
-  --font-cormorant: 'Cormorant Garamond', 'Times New Roman', serif;
     --background: 30 20% 99%;
     --foreground: 0 0% 10%;
     --card: 30 20% 99%;
@@ -60,26 +58,24 @@
     letter-spacing: -0.02em;
   }
 
-  /* Custom Scrollbar */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { @apply bg-primary-300 rounded-full; }
   ::-webkit-scrollbar-thumb:hover { @apply bg-primary-500; }
 
-  /* Selection */
   ::selection { @apply bg-primary-200 text-primary-900; }
 }
 
 @layer components {
   .btn-primary {
-    @apply bg-primary-500 text-white hover:bg-primary-600 
+    @apply bg-primary-500 text-white hover:bg-primary-600
            font-sans font-semibold tracking-wide
            px-6 py-3 rounded-xl transition-all duration-200
            shadow-sm hover:shadow-md active:scale-95;
   }
 
   .btn-secondary {
-    @apply bg-transparent border border-primary-400 text-primary-600 
+    @apply bg-transparent border border-primary-400 text-primary-600
            hover:bg-primary-50 font-sans font-semibold tracking-wide
            px-6 py-3 rounded-xl transition-all duration-200;
   }
@@ -89,6 +85,7 @@
            font-sans font-medium px-4 py-2 rounded-lg transition-colors;
   }
 
+  /* NOTE: 'group' removed from @apply — add class="group card-product" in JSX */
   .card-product {
     @apply bg-card rounded-2xl overflow-hidden border border-border/50
            hover:border-primary-200 hover:shadow-xl hover:shadow-primary-500/10
@@ -118,7 +115,6 @@
     @apply badge bg-champagne-400 text-charcoal-600;
   }
 
-  /* Section headings */
   .section-title {
     @apply font-display text-3xl md:text-4xl lg:text-5xl font-light tracking-tight;
   }
@@ -127,14 +123,12 @@
     @apply font-sans text-muted-foreground text-lg font-light;
   }
 
-  /* Shimmer loading */
   .shimmer {
     background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
     background-size: 1000px 100%;
     @apply animate-shimmer;
   }
 
-  /* Luxury divider */
   .luxury-divider {
     @apply flex items-center gap-4 text-primary-400;
   }
@@ -168,7 +162,6 @@
     @apply font-sans text-muted-foreground line-through;
   }
 
-  /* Focus visible */
   .focus-ring {
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2;
   }

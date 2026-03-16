@@ -21,7 +21,7 @@ async function getProducts(page = 1, limit = 20) {
   ]);
 
   // Normalize to ensure consistent field names
-  const normalized = products.map((p) => ({
+  const normalized = products.map((p: any) => ({
     ...p,
     price: Number(p.basePrice),
     comparePrice: p.comparePrice ? Number(p.comparePrice) : null,

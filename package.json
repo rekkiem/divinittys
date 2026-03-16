@@ -16,13 +16,18 @@
     "db:reset": "prisma migrate reset",
     "import:products": "npx tsx scripts/import-products.ts",
     "generate": "prisma generate",
-    "postinstall": "prisma generate",
-    "worker": "tsx src/workers/index.ts",
-    "search:reindex": "tsx scripts/reindex-search.ts"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:smoke": "vitest run src/tests/smoke",
+    "search:reindex": "npx tsx scripts/reindex-search.ts",
+    "health": "npx tsx scripts/health-check.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.600.0",
     "@aws-sdk/s3-request-presigner": "3.600.0",
+    "@bull-board/api": "6.20.5",
+    "@bull-board/hono": "6.20.5",
     "@prisma/client": "5.15.0",
     "@radix-ui/react-accordion": "1.2.0",
     "@radix-ui/react-avatar": "1.1.0",
@@ -39,10 +44,11 @@
     "@radix-ui/react-toast": "1.2.1",
     "@radix-ui/react-tooltip": "1.1.2",
     "@tanstack/react-query": "5.50.1",
-    "@tanstack/react-table": "^8.20.6",
+    "@tanstack/react-table": "8.21.3",
     "autoprefixer": "10.4.19",
     "axios": "1.7.2",
     "bcryptjs": "2.4.3",
+    "bullmq": "5.71.0",
     "class-variance-authority": "0.7.0",
     "clsx": "2.1.1",
     "date-fns": "3.6.0",
@@ -50,6 +56,7 @@
     "ioredis": "5.4.1",
     "jose": "5.6.3",
     "lucide-react": "0.408.0",
+    "meilisearch": "0.44.0",
     "mercadopago": "2.0.7",
     "minio": "8.0.0",
     "next": "14.2.35",
@@ -74,14 +81,18 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "2.4.6",
-    "@types/nodemailer": "6.4.15",
     "@types/node": "20.14.0",
+    "@types/nodemailer": "6.4.15",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
+    "@types/supertest": "6.0.2",
+    "@vitest/coverage-v8": "2.1.9",
     "eslint": "8.57.0",
     "eslint-config-next": "14.2.35",
     "prisma": "5.15.0",
+    "supertest": "7.0.0",
     "tsx": "4.15.0",
-    "typescript": "5.5.2"
+    "typescript": "5.5.2",
+    "vitest": "2.1.9"
   }
 }

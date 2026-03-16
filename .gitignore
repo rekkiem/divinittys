@@ -1,5 +1,39 @@
+# Dependencies
 node_modules/
+.pnp
+.pnp.js
+
+# Next.js
 .next/
 out/
 build/
-.env*
+
+# Env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Testing
+coverage/
+.vitest/
+
+# Prisma
+prisma/migrations/*.sql.bak
+
+# Build artifacts
+dist/
+*.tsbuildinfo

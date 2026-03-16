@@ -1,24 +1,35 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  
   images: {
     remotePatterns: [
-      {
-        protocol: 'http',
-        hostname: 'localhost',
-        port: '9000',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
-        hostname: '**.minio.divinittys.cl',
-        pathname: '/**',
-      },
+      { protocol: 'http',  hostname: 'localhost', port: '9000', pathname: '/**' },
+      { protocol: 'https', hostname: '**.minio.divinittys.cl', pathname: '/**' },
+      { protocol: 'https', hostname: '**.r2.cloudflarestorage.com', pathname: '/**' },
+      { protocol: 'https', hostname: 'res.cloudinary.com', pathname: '/**' },
     ],
+    formats: ['image/avif', 'image/webp'],
+    deviceSizes: [360, 480, 640, 750, 828, 1080, 1200],
+    minimumCacheTTL: 60,
   },
+
+  // Packages that run on Node.js (not edge) — must be external
   experimental: {
-    serverComponentsExternalPackages: ['bcryptjs', '@prisma/client', 'prisma'],
+    serverComponentsExternalPackages: ['bcryptjs', '@prisma/client', 'prisma', 'meilisearch'],
   },
+
+  // Webpack: mark bullmq/ioredis as external in Edge runtime
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        net: false, tls: false, fs: false,
+      };
+    }
+    return config;
+  },
+
   async headers() {
     return [
       {
@@ -31,8 +42,16 @@ const nextConfig = {
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'X-XSS-Protection', value: '1; mode=block' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
         ],
       },
+    ];
+  },
+
+  // Redirects for common paths
+  async redirects() {
+    return [
+      { source: '/admin', destination: '/admin', permanent: false },
     ];
   },
 };

@@ -16,7 +16,7 @@ import {
 
 const isProduction = process.env.TRANSBANK_ENV === 'production';
 
-function getTransaction() {
+function getTransaction(): InstanceType<typeof WebpayPlus.Transaction> {
   if (isProduction) {
     // Production credentials from env
     const opts = new Options(
