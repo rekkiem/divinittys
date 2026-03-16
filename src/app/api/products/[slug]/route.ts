@@ -1,7 +1,6 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { ok, notFound, serverError } from '@/lib/utils/api';
-import { enqueueProductDelete, enqueueProductIndex } from '@/lib/queue/search.queue';
 
 export async function GET(
   req: NextRequest,
@@ -13,7 +12,6 @@ export async function GET(
       include: {
         category: true,
         brand: true,
-      vendor: true,
         images: { orderBy: { sortOrder: 'asc' } },
         attributes: true,
         variants: { where: { isActive: true } },
@@ -77,7 +75,6 @@ export async function PATCH(
       where: { slug: params.slug },
       data: body,
     });
-    await enqueueProductIndex(product.id);
     return ok(product);
   } catch (error) {
     return serverError(error);
@@ -90,8 +87,7 @@ export async function DELETE(
   { params }: { params: { slug: string } }
 ) {
   try {
-    const deleted = await prisma.product.delete({ where: { slug: params.slug } });
-    await enqueueProductDelete(deleted.id);
+    await prisma.product.delete({ where: { slug: params.slug } });
     return ok({ message: 'Producto eliminado' });
   } catch (error) {
     return serverError(error);

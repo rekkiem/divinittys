@@ -6,8 +6,6 @@ import Footer from '@/components/layout/Footer';
 import ProductDetail from '@/components/shop/ProductDetail';
 import FeaturedProducts from '@/components/shop/FeaturedProducts';
 
-export const revalidate = 300;
-
 export async function generateMetadata({
   params,
 }: {
@@ -30,7 +28,6 @@ export default async function ProductPage({ params }: { params: { slug: string }
     include: {
       images: { orderBy: { sortOrder: 'asc' } },
       brand: true,
-      vendor: true,
       category: { include: { parent: true } },
       inventory: true,
       attributes: true,
@@ -61,25 +58,8 @@ export default async function ProductPage({ params }: { params: { slug: string }
     },
   });
 
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'Product',
-    name: product.name,
-    description: product.shortDescription || product.description || '',
-    image: product.images.map((img) => img.url),
-    sku: product.sku,
-    brand: product.brand ? { '@type': 'Brand', name: product.brand.name } : undefined,
-    offers: {
-      '@type': 'Offer',
-      priceCurrency: 'CLP',
-      price: Number(product.basePrice),
-      availability: product.inventory?.stock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
-    },
-  };
-
   return (
     <div className="min-h-screen bg-background">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <Navbar />
       <main>
         <ProductDetail product={product} />

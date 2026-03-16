@@ -1,10 +1,8 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { Prisma } from '@prisma/client';
 import { getAuthUser } from '@/lib/auth';
 import { ok, created, badRequest, unauthorized, serverError, generateOrderNumber } from '@/lib/utils/api';
-import { emailQueue } from '@/lib/queue/email.queue';
 
 const createOrderSchema = z.object({
   items: z.array(z.object({
@@ -70,7 +68,6 @@ export async function POST(req: NextRequest) {
         inventory: true,
         variants: true,
         images: { where: { isMain: true }, take: 1 },
-        vendor: true,
       },
     });
 
@@ -80,13 +77,12 @@ export async function POST(req: NextRequest) {
 
     // Calculate totals
     let subtotal = 0;
-
-    const orderItems: Array<Record<string, unknown>> = [];
+    const orderItems: any[] = [];
 
     for (const item of data.items) {
-      const product = products.find((p) => p.id === item.productId)!;
+      const product = products.find((p: any) => p.id === item.productId)!;
       const variant = item.variantId
-        ? product.variants.find((v) => v.id === item.variantId)
+        ? product.variants.find((v: any) => v.id === item.variantId)
         : null;
 
       const price = variant ? Number(variant.price) : Number(product.basePrice);
@@ -99,10 +95,6 @@ export async function POST(req: NextRequest) {
       const total = price * item.quantity;
       subtotal += total;
 
-      const commissionRate = Number(product.vendor?.commissionRate ?? process.env.VENDOR_COMMISSION_DEFAULT ?? 0.15);
-      const commissionAmount = total * commissionRate;
-      const vendorAmount = total - commissionAmount;
-
       orderItems.push({
         productId: item.productId,
         variantId: item.variantId,
@@ -112,9 +104,6 @@ export async function POST(req: NextRequest) {
         price,
         quantity: item.quantity,
         total,
-        vendorId: product.vendorId,
-        commissionAmount,
-        vendorAmount,
       });
     }
 
@@ -158,7 +147,7 @@ export async function POST(req: NextRequest) {
     const total = subtotal - discountAmount + shippingAmount;
 
     // Create order
-    const order = await prisma.$transaction(async (tx) => {
+    const order = await prisma.$transaction(async (tx: any) => {
       const newOrder = await tx.order.create({
         data: {
           orderNumber: generateOrderNumber(),
@@ -210,13 +199,6 @@ export async function POST(req: NextRequest) {
 
       return newOrder;
     });
-
-    if (data.shippingData.email) {
-      await emailQueue.add('order-confirmed', {
-        email: data.shippingData.email,
-        orderNumber: order.orderNumber,
-      });
-    }
 
     return created({ order });
   } catch (error) {

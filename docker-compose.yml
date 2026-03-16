@@ -1,28 +1,22 @@
 # ============================================================
-# DIVINITTYS - Docker Compose
+# DIVINITTYS - Docker Compose v3.1
 # ============================================================
-# Ejecutar con: docker compose up --build
-# App:          http://localhost:3000
-# Admin:        http://localhost:3000/admin
-#               admin@divinittys.cl / Admin123!@#
-# MinIO UI:     http://localhost:9001
+# App:     http://localhost:${PORT_APP:-3000}
+# Admin:   http://localhost:${PORT_APP:-3000}/admin
+#          admin@divinittys.cl / Admin123!@#
+# MinIO:   http://localhost:${PORT_MINIO_CONSOLE:-9001}
+# Meili:   http://localhost:${PORT_MEILI:-7700}
 #
-# ──────────────────────────────────────────────────────────
-# ⚠️  CONFLICTOS DE PUERTOS
-# Si ya tienes servicios en estos puertos, agrega un .env:
-#
+# ⚠️  CONFLICTOS DE PUERTOS — crea/edita tu .env:
 #   PORT_APP=3001
 #   PORT_POSTGRES=5433
+#   PORT_MEILI=7701   ← si 7700 está ocupado (ver netstat -ano | findstr :7700)
 #   PORT_MINIO=9100
 #   PORT_MINIO_CONSOLE=9101
-#
-# Redis NO expone puertos al host (solo acceso interno).
-# Si necesitas redis-cli externo, agrega: PORT_REDIS=6380
 # ============================================================
 
 services:
 
-  # ── PostgreSQL ───────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     container_name: divinittys_db
@@ -41,51 +35,64 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 20s
     networks:
       - divinittys_net
 
-  # ── Redis (SIN puerto al host — acceso solo interno) ─────
   redis:
     image: redis:7-alpine
     container_name: divinittys_redis
     restart: unless-stopped
-    command: redis-server --save 60 1 --loglevel warning
+    command: redis-server --save 60 1 --loglevel warning --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
-    # Solo descomenta si necesitas redis-cli desde fuera de Docker:
-    # ports:
-    #   - "${PORT_REDIS:-6380}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
     networks:
       - divinittys_net
 
-
-  # ── Meilisearch ───────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────
+  # MEILISEARCH — FIXES APLICADOS:
+  #
+  # FIX A) healthcheck usa /proc/net/tcp (nativo Linux, sin wget/curl)
+  #   Port 7700 decimal = 1E14 hexadecimal (big-endian, uppercase)
+  #   /proc/net/tcp lista sockets TCP activos en hex.
+  #   Cuando Meilisearch escucha, "1E14" aparece en esa lista.
+  #
+  # FIX B) La app depende con condition: service_started (no service_healthy)
+  #   Meilisearch tiene fallback graceful a búsqueda SQL en el código.
+  #
+  # FIX C) Puerto configurable: PORT_MEILI=7701 en .env si 7700 está ocupado.
+  #   IMPORTANTE: el puerto INTERNO siempre es 7700 (comunicación entre contenedores).
+  # ─────────────────────────────────────────────────────────
   meilisearch:
-    image: getmeili/meilisearch:latest
+    image: getmeili/meilisearch:v1.6
     container_name: divinittys_meili
     restart: unless-stopped
     environment:
-      MEILI_MASTER_KEY: ${MEILISEARCH_API_KEY:-divinittys_meili_key}
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-divinittys_meili_master_key_2024}
       MEILI_ENV: development
+      MEILI_HTTP_ADDR: 0.0.0.0:7700
+      MEILI_NO_ANALYTICS: "true"
     volumes:
       - meili_data:/meili_data
     ports:
-      - "7700:7700"
+      - "${PORT_MEILI:-7700}:7700"
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--spider", "http://localhost:7700/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 10s   # importante: da tiempo a que Meilisearch termine de iniciar
+      test:
+        - "CMD-SHELL"
+        - "cat /proc/net/tcp6 2>/dev/null | grep -q 1E14 || cat /proc/net/tcp 2>/dev/null | grep -q 1E14"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     networks:
       - divinittys_net
 
-  # ── MinIO (Object Storage) ───────────────────────────────
   minio:
     image: minio/minio:latest
     container_name: divinittys_storage
@@ -100,14 +107,14 @@ services:
       - "${PORT_MINIO:-9000}:9000"
       - "${PORT_MINIO_CONSOLE:-9001}:9001"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 5
+      start_period: 20s
     networks:
       - divinittys_net
 
-  # ── Next.js App ──────────────────────────────────────────
   app:
     build:
       context: .
@@ -118,12 +125,13 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-divinittys}:${POSTGRES_PASSWORD:-divinittys_secret}@postgres:5432/${POSTGRES_DB:-divinittys}
       REDIS_URL: redis://redis:6379
+      MEILISEARCH_URL: http://meilisearch:7700
+      MEILISEARCH_API_KEY: ${MEILI_MASTER_KEY:-divinittys_meili_master_key_2024}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
-      JWT_SECRET: ${JWT_SECRET:-super_secret_jwt_key_change_in_production}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-super_secret_refresh_key_change_in_production}
+      JWT_SECRET: ${JWT_SECRET:-super_secret_jwt_key_change_in_production_32c}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-super_secret_refresh_key_change_in_prod_32c}
       NODE_ENV: development
       NEXT_TELEMETRY_DISABLED: "1"
-      # Servicios opcionales — el sistema funciona sin ellos
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       TRANSBANK_API_KEY: ${TRANSBANK_API_KEY:-579B532A7440BB0C9079DED94D31EA1615BACEB56610332264630D42D0A36B1C}
       TRANSBANK_COMMERCE_CODE: ${TRANSBANK_COMMERCE_CODE:-597055555532}
@@ -137,9 +145,6 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-divinittys_admin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-divinittys_secret_2024}
       MINIO_BUCKET: divinittys-products
-      MEILISEARCH_URL: http://meilisearch:7700
-      MEILISEARCH_API_KEY: ${MEILISEARCH_API_KEY:-divinittys_meili_key}
-      VENDOR_COMMISSION_DEFAULT: ${VENDOR_COMMISSION_DEFAULT:-0.15}
     volumes:
       - .:/app
       - /app/node_modules
@@ -150,53 +155,23 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
-        condition: service_healthy
       meilisearch:
+        condition: service_started
+      minio:
         condition: service_healthy
     command: >
       sh -c "
-        echo '📁 Preparing directories...' &&
+        echo '📁 Preparando directorios...' &&
         mkdir -p .next/cache &&
-        echo '⏳ Running migrations...' &&
+        echo '⏳ Aplicando migraciones...' &&
         npx prisma migrate deploy &&
-        echo '🌱 Running seed...' &&
+        echo '🌱 Cargando datos iniciales...' &&
         npx tsx prisma/seed.ts &&
-        echo '🚀 Starting dev server...' &&
+        echo '🔍 Indexando en Meilisearch (background)...' &&
+        (sleep 10 && npx tsx scripts/reindex-search.ts) &
+        echo '🚀 Iniciando servidor...' &&
         npm run dev
       "
-    networks:
-      - divinittys_net
-
-  # ── BullMQ Worker ────────────────────────────────────────
-  worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: development
-    container_name: divinittys_worker
-    restart: unless-stopped
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-divinittys}:${POSTGRES_PASSWORD:-divinittys_secret}@postgres:5432/${POSTGRES_DB:-divinittys}
-      REDIS_URL: redis://redis:6379
-      MEILISEARCH_URL: http://meilisearch:7700
-      MEILISEARCH_API_KEY: ${MEILISEARCH_API_KEY:-divinittys_meili_key}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASS: ${SMTP_PASS:-}
-      EMAIL_FROM: ${EMAIL_FROM:-DIVINITTYS <no-reply@divinittys.cl>}
-    volumes:
-      - .:/app
-      - /app/node_modules
-    command: npm run worker
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      meilisearch:
-        condition: service_healthy
     networks:
       - divinittys_net
 
