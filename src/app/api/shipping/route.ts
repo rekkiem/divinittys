@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
 
       const shippingData = order.shippingData as any;
       const packageData = calculatePackageFromOrder(
-        order.items.map((i) => ({
+        order.items.map((i: any) => ({
           weight: i.product.weight ? Number(i.product.weight) : undefined,
           quantity: i.quantity,
         }))

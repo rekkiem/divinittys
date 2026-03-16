@@ -147,7 +147,7 @@ export async function generateProductRecommendations(
   });
 
   const purchasedCategories = userHistory
-    .flatMap((o) => o.items.map((i) => i.product.category.name))
+    .flatMap((o: any) => o.items.map((i: any) => i.product.category.name))
     .slice(0, 10);
 
   if (purchasedCategories.length === 0) {
@@ -157,7 +157,7 @@ export async function generateProductRecommendations(
       take: 6,
       select: { id: true },
     });
-    return featured.map((p) => p.id);
+    return featured.map((p: any) => p.id);
   }
 
   // Find similar products
@@ -174,7 +174,7 @@ export async function generateProductRecommendations(
     orderBy: [{ isFeatured: 'desc' }, { createdAt: 'desc' }],
   });
 
-  return recommended.map((p) => p.id);
+  return recommended.map((p: any) => p.id);
 }
 
 export async function generateTinturaRecommendation(params: {

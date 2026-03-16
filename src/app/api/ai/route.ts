@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
 
       const diagnosis = await generateHairDiagnosis(
         diagnosisInput,
-        products.map((p) => ({
+        products.map((p: any) => ({
           name: p.name,
           category: p.category.name,
           price: Number(p.basePrice),
@@ -58,13 +58,13 @@ export async function POST(req: NextRequest) {
       );
 
       const enriched = products
-        .filter((p) => diagnosis.recommendedProducts.some((r) => r.name === p.name))
+        .filter((p: any) => diagnosis.recommendedProducts.some((r) => r.name === p.name))
         .slice(0, 4)
-        .map((p) => ({ ...p, basePrice: Number(p.basePrice), images: p.images }));
+        .map((p: any) => ({ ...p, basePrice: Number(p.basePrice), images: p.images }));
 
       return ok({
         advice: diagnosis.diagnosis,
-        products: enriched.length > 0 ? enriched : products.slice(0, 4).map((p) => ({ ...p, basePrice: Number(p.basePrice) })),
+        products: enriched.length > 0 ? enriched : products.slice(0, 4).map((p: any) => ({ ...p, basePrice: Number(p.basePrice) })),
       });
     }
 
@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
 
       const diagnosis = await generateHairDiagnosis(
         input,
-        products.map((p) => ({
+        products.map((p: any) => ({
           name: p.name,
           category: p.category.name,
           price: Number(p.basePrice),
@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
         where: {
           isActive: true,
           name: {
-            in: diagnosis.recommendedProducts.map((p) => p.name),
+            in: diagnosis.recommendedProducts.map((p: any) => p.name),
           },
         },
         include: {

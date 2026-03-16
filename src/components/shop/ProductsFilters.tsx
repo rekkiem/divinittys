@@ -14,7 +14,7 @@ type FilterProps = {
 
 export default function ProductsFilters({ categories, brands, minPrice, maxPrice, searchParams }: FilterProps) {
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = usePathname() ?? '/productos';
   const [catOpen, setCatOpen] = useState(true);
   const [brandOpen, setBrandOpen] = useState(true);
   const [priceOpen, setPriceOpen] = useState(true);

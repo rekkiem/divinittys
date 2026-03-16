@@ -126,7 +126,7 @@ export default async function AdminDashboard() {
           <div className="divide-y divide-border">
             {stats.recentOrders.length === 0 ? (
               <p className="p-6 text-center font-sans text-muted-foreground text-sm">No hay pedidos aún</p>
-            ) : stats.recentOrders.map((order) => (
+            ) : stats.recentOrders.map((order: any) => (
               <div key={order.id} className="p-4 flex items-center justify-between hover:bg-muted/30 transition-colors">
                 <div>
                   <p className="font-sans font-medium text-sm text-charcoal-700">{order.orderNumber}</p>
@@ -159,7 +159,7 @@ export default async function AdminDashboard() {
           <div className="divide-y divide-border">
             {stats.lowStockProducts.length === 0 ? (
               <p className="p-6 text-center font-sans text-sm text-emerald-600">✓ Todo en orden</p>
-            ) : stats.lowStockProducts.map((inv) => (
+            ) : stats.lowStockProducts.map((inv: any) => (
               <div key={inv.id} className="p-4">
                 <p className="font-sans text-sm font-medium text-charcoal-700 line-clamp-1">{inv.product.name}</p>
                 <div className="flex items-center justify-between mt-1">

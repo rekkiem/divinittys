@@ -17,8 +17,8 @@ type Product = {
   sku: string;
   description?: string | null;
   shortDescription?: string | null;
-  basePrice: number | string | { toString(): string };
-  comparePrice?: number | string | { toString(): string } | null;
+  basePrice: number | string;
+  comparePrice?: number | string | null;
   isOnSale?: boolean;
   isFeatured?: boolean;
   images: { id: string; url: string; alt?: string | null; isMain: boolean }[];
@@ -26,7 +26,7 @@ type Product = {
   category?: { id: string; name: string; slug: string; parent?: { name: string; slug: string } | null } | null;
   inventory?: { stock: number; allowBackorder: boolean } | null;
   attributes: { id: string; name: string; value: string }[];
-  variants: { id: string; name: string; sku: string; price: number | string | { toString(): string }; stock: number; options?: any }[];
+  variants: { id: string; name: string; sku: string; price: number | string; stock: number; options?: any }[];
   reviews: { id: string; rating: number; title?: string | null; body?: string | null; user: { name?: string | null }; createdAt: Date }[];
 };
 

@@ -1,128 +1,97 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { ok, serverError } from '@/lib/utils/api';
-import { getCache, setCache } from '@/lib/redis/client';
+import { ok, badRequest, serverError, paginate } from '@/lib/utils/api';
 import { searchProducts } from '@/lib/search/meilisearch';
-
-const querySchema = z.object({
-  page: z.coerce.number().min(1).default(1),
-  limit: z.coerce.number().min(1).max(100).default(24),
-  cursor: z.string().optional(),
-  q: z.string().optional(),
-  category: z.string().optional(),
-  brand: z.string().optional(),
-  minPrice: z.coerce.number().optional(),
-  maxPrice: z.coerce.number().optional(),
-  sort: z.enum(['newest', 'price_asc', 'price_desc', 'name_asc', 'featured']).default('newest'),
-  featured: z.coerce.boolean().optional(),
-  onSale: z.coerce.boolean().optional(),
-  ids: z.string().optional(),
-});
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const params = querySchema.parse(Object.fromEntries(searchParams));
-    const cacheKey = `products:v2:${searchParams.toString()}`;
-    const cached = await getCache(cacheKey);
-    if (cached) return ok(cached);
+    const q       = searchParams.get('q') || '';
+    const page    = Math.max(1, parseInt(searchParams.get('page') || '1'));
+    const limit   = Math.min(48, parseInt(searchParams.get('limit') || '20'));
+    const category = searchParams.get('category') || undefined;
+    const brand    = searchParams.get('brand') || undefined;
+    const minPrice = searchParams.get('minPrice') ? parseFloat(searchParams.get('minPrice')!) : undefined;
+    const maxPrice = searchParams.get('maxPrice') ? parseFloat(searchParams.get('maxPrice')!) : undefined;
+    const sort     = (searchParams.get('sort') || 'newest') as any;
+    const featured = searchParams.get('featured') === 'true';
+    const onSale   = searchParams.get('onSale') === 'true';
+    const ids      = searchParams.get('ids')?.split(',').filter(Boolean);
 
-    // Búsqueda full-text con Meilisearch si hay query
-    if (params.q && !params.ids) {
-      const filters: string[] = ['isActive = true'];
-      if (params.category) filters.push(`categorySlug = \"${params.category}\"`);
-      if (params.brand) filters.push(`brandSlug = \"${params.brand}\"`);
-      if (params.onSale !== undefined) filters.push(`isOnSale = ${params.onSale}`);
-      if (params.featured !== undefined) filters.push(`isFeatured = ${params.featured}`);
-
-      const sortMap: Record<string, string[]> = {
-        newest: ['createdAt:desc'],
-        price_asc: ['basePrice:asc'],
-        price_desc: ['basePrice:desc'],
-        name_asc: ['name:asc'],
-        featured: ['isFeatured:desc', 'createdAt:desc'],
-      };
-
-      const result = await searchProducts(params.q, {
-        limit: params.limit,
-        filter: filters,
-        sort: sortMap[params.sort],
-        facets: ['categorySlug', 'brandSlug'],
-      });
-
-      const data = {
-        products: result.hits,
-        pagination: {
-          total: result.estimatedTotalHits || result.hits.length,
-          page: params.page,
-          limit: params.limit,
-          hasNext: false,
-          hasPrev: params.page > 1,
-        },
-        facets: result.facetDistribution || {},
-      };
-      await setCache(cacheKey, data, 60);
-      return ok(data);
+    // ── Try Meilisearch first (if query has text) ──────
+    if (q && !ids && !featured) {
+      const meiliResult = await searchProducts({ q, page, limit, category, brand, minPrice, maxPrice, onSale, sort });
+      if (meiliResult) {
+        return ok({
+          products: meiliResult.hits,
+          pagination: { page, limit, total: meiliResult.total, pages: Math.ceil(meiliResult.total / limit) },
+          facets: meiliResult.facets,
+          source: 'meilisearch',
+        });
+      }
     }
 
-    const take = params.limit;
+    // ── SQL fallback ───────────────────────────────────
     const where: any = { isActive: true };
-
-    if (params.category) where.category = { slug: params.category };
-    if (params.brand) where.brand = { slug: params.brand };
-    if (params.featured !== undefined) where.isFeatured = params.featured;
-    if (params.onSale !== undefined) where.isOnSale = params.onSale;
-    if (params.ids) {
-      const idList = params.ids.split(',').filter(Boolean);
-      if (idList.length > 0) where.id = { in: idList };
-    }
-    if (params.minPrice !== undefined || params.maxPrice !== undefined) {
-      where.basePrice = {};
-      if (params.minPrice !== undefined) where.basePrice.gte = params.minPrice;
-      if (params.maxPrice !== undefined) where.basePrice.lte = params.maxPrice;
-    }
-
-    const orderBy: any[] = [];
-    switch (params.sort) {
-      case 'newest': orderBy.push({ createdAt: 'desc' }); break;
-      case 'price_asc': orderBy.push({ basePrice: 'asc' }); break;
-      case 'price_desc': orderBy.push({ basePrice: 'desc' }); break;
-      case 'name_asc': orderBy.push({ name: 'asc' }); break;
-      case 'featured': orderBy.push({ isFeatured: 'desc' }, { createdAt: 'desc' }); break;
+    if (ids?.length) { where.id = { in: ids }; }
+    else {
+      if (q)        where.OR = [{ name: { contains: q, mode: 'insensitive' } }, { sku: { contains: q, mode: 'insensitive' } }, { description: { contains: q, mode: 'insensitive' } }];
+      if (category) where.category = { slug: category };
+      if (brand)    where.brand    = { slug: brand };
+      if (featured) where.isFeatured = true;
+      if (onSale)   where.comparePrice = { not: null };
+      if (minPrice !== undefined || maxPrice !== undefined) {
+        where.basePrice = {};
+        if (minPrice !== undefined) where.basePrice.gte = minPrice;
+        if (maxPrice !== undefined) where.basePrice.lte = maxPrice;
+      }
     }
 
-    const products = await prisma.product.findMany({
-      where,
-      take: take + 1,
-      ...(params.cursor ? { cursor: { id: params.cursor }, skip: 1 } : {}),
-      orderBy,
-      include: {
-        category: { select: { id: true, name: true, slug: true } },
-        brand: { select: { id: true, name: true, slug: true } },
-        vendor: { select: { id: true, storeName: true, slug: true } },
-        images: { where: { isMain: true }, take: 1 },
-        inventory: { select: { stock: true } },
-      },
-    });
-
-    const hasNext = products.length > take;
-    const items = hasNext ? products.slice(0, take) : products;
-
-    const data = {
-      products: items,
-      pagination: {
-        total: items.length,
-        page: params.page,
-        limit: params.limit,
-        hasNext,
-        hasPrev: Boolean(params.cursor) || params.page > 1,
-        nextCursor: hasNext ? items[items.length - 1].id : null,
-      },
+    const sortMap: Record<string, object> = {
+      newest: { createdAt: 'desc' }, oldest: { createdAt: 'asc' },
+      price_asc: { basePrice: 'asc' }, price_desc: { basePrice: 'desc' },
+      name_asc: { name: 'asc' },
     };
+    const orderBy = sortMap[sort] || { createdAt: 'desc' };
 
-    await setCache(cacheKey, data, 60);
-    return ok(data);
+    const { skip, take } = paginate(page, limit);
+    const [total, products] = await Promise.all([
+      prisma.product.count({ where }),
+      prisma.product.findMany({
+        where, orderBy, skip, take,
+        include: {
+          category: { select: { name: true, slug: true } },
+          brand: { select: { name: true, slug: true } },
+          images: { take: 2, orderBy: { position: 'asc' } },
+          inventory: { select: { stock: true } },
+        },
+      }),
+    ]);
+
+    return ok({
+      products,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+      source: 'database',
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) return badRequest('Parámetros inválidos');
+    return serverError(error);
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const product = await prisma.product.create({
+      data: body,
+      include: { category: true, brand: true, images: true },
+    });
+    // Async index in background
+    const { indexProduct } = await import('@/lib/search/meilisearch');
+    const { enqueueSearchIndex } = await import('@/lib/queue/queues');
+    await enqueueSearchIndex(product.id, 'index').catch(() => {});
+    return ok(product, 201);
   } catch (error) {
     return serverError(error);
   }

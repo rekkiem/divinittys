@@ -12,7 +12,6 @@ import {
   verifyAccessToken,
 } from '@/lib/auth';
 import { ok, badRequest, unauthorized, serverError, conflict } from '@/lib/utils/api';
-import { emailQueue } from '@/lib/queue/email.queue';
 
 // ---- Register ----
 const registerSchema = z.object({
@@ -60,8 +59,6 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      await emailQueue.add('welcome', { email: user.email });
-
       const res = ok({ user, accessToken });
       setAuthCookies(res as NextResponse, accessToken, refreshToken);
       return res;
@@ -93,8 +90,6 @@ export async function POST(req: NextRequest) {
           expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         },
       });
-
-      await prisma.user.update({ where: { id: user.id }, data: { lastActivityAt: new Date() } });
 
       const userData = { id: user.id, email: user.email, name: user.name, role: user.role, avatar: user.avatar };
       const res = ok({ user: userData, accessToken });

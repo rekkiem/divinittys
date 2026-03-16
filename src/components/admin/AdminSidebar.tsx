@@ -20,7 +20,7 @@ const navItems = [
 ];
 
 export default function AdminSidebar() {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? '';
 
   return (
     <aside className="hidden lg:flex flex-col w-64 bg-charcoal-700 min-h-screen">

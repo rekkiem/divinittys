@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
         (tbkResult as any).status === 'AUTHORIZED';
 
       if (isApproved) {
-        await prisma.$transaction(async (tx) => {
+        await prisma.$transaction(async (tx: any) => {
           await tx.payment.update({
             where: { id: payment.id },
             data: {
@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
 
       const mpResponse = await createMPPreference(
         {
-          items: order.items.map((item) => ({
+          items: order.items.map((item: any) => ({
             id: item.productId,
             title: item.name,
             quantity: item.quantity,
