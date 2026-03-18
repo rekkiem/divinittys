@@ -1,0 +1,168 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 30 20% 99%;
+    --foreground: 0 0% 10%;
+    --card: 30 20% 99%;
+    --card-foreground: 0 0% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 10%;
+    --primary: 24 46% 60%;
+    --primary-foreground: 30 20% 99%;
+    --secondary: 30 40% 94%;
+    --secondary-foreground: 0 0% 10%;
+    --muted: 30 20% 95%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 350 40% 82%;
+    --accent-foreground: 0 0% 10%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 30 20% 88%;
+    --input: 30 20% 88%;
+    --ring: 24 46% 60%;
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 0 0% 7%;
+    --foreground: 30 40% 94%;
+    --card: 0 0% 9%;
+    --card-foreground: 30 40% 94%;
+    --popover: 0 0% 9%;
+    --popover-foreground: 30 40% 94%;
+    --primary: 24 46% 60%;
+    --primary-foreground: 0 0% 7%;
+    --secondary: 0 0% 14%;
+    --secondary-foreground: 30 40% 94%;
+    --muted: 0 0% 14%;
+    --muted-foreground: 0 0% 55%;
+    --accent: 350 30% 30%;
+    --accent-foreground: 30 40% 94%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 16%;
+    --input: 0 0% 16%;
+    --ring: 24 46% 60%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground; }
+
+  h1, h2, h3 {
+    @apply font-display;
+    letter-spacing: -0.02em;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-primary-300 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-primary-500; }
+
+  ::selection { @apply bg-primary-200 text-primary-900; }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary-500 text-white hover:bg-primary-600
+           font-sans font-semibold tracking-wide
+           px-6 py-3 rounded-xl transition-all duration-200
+           shadow-sm hover:shadow-md active:scale-95;
+  }
+
+  .btn-secondary {
+    @apply bg-transparent border border-primary-400 text-primary-600
+           hover:bg-primary-50 font-sans font-semibold tracking-wide
+           px-6 py-3 rounded-xl transition-all duration-200;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent text-foreground hover:bg-muted
+           font-sans font-medium px-4 py-2 rounded-lg transition-colors;
+  }
+
+  /* NOTE: 'group' removed from @apply — add class="group card-product" in JSX */
+  .card-product {
+    @apply bg-card rounded-2xl overflow-hidden border border-border/50
+           hover:border-primary-200 hover:shadow-xl hover:shadow-primary-500/10
+           transition-all duration-300;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 rounded-xl border border-input bg-background
+           text-foreground placeholder:text-muted-foreground
+           focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent
+           transition-all duration-200 font-sans text-sm;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold;
+  }
+
+  .badge-sale {
+    @apply badge bg-rose-500 text-white;
+  }
+
+  .badge-new {
+    @apply badge bg-primary-500 text-white;
+  }
+
+  .badge-featured {
+    @apply badge bg-champagne-400 text-charcoal-600;
+  }
+
+  .section-title {
+    @apply font-display text-3xl md:text-4xl lg:text-5xl font-light tracking-tight;
+  }
+
+  .section-subtitle {
+    @apply font-sans text-muted-foreground text-lg font-light;
+  }
+
+  .shimmer {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 1000px 100%;
+    @apply animate-shimmer;
+  }
+
+  .luxury-divider {
+    @apply flex items-center gap-4 text-primary-400;
+  }
+  .luxury-divider::before,
+  .luxury-divider::after {
+    content: '';
+    @apply flex-1 h-px bg-gradient-to-r from-transparent via-primary-300 to-transparent;
+  }
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-primary-600 via-rose-400 to-primary-500 bg-clip-text text-transparent;
+  }
+
+  .glass {
+    @apply bg-white/80 backdrop-blur-md border border-white/20;
+  }
+
+  .glass-dark {
+    @apply bg-black/60 backdrop-blur-md border border-white/10;
+  }
+
+  .price-format {
+    @apply font-sans font-bold text-foreground;
+  }
+
+  .price-compare {
+    @apply font-sans text-muted-foreground line-through;
+  }
+
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2;
+  }
+}
