@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
 import * as XLSX from 'xlsx';
 import { prisma } from '@/lib/prisma';
-import { getAuthUser } from '@/lib/auth';
-import { ok, badRequest, unauthorized, serverError } from '@/lib/utils/api';
+import { withAdmin } from '@/lib/admin-auth';
+import { ok, badRequest, serverError } from '@/lib/utils/api';
 import { slugify } from '@/lib/utils/api';
 
 type ProductRow = {
@@ -24,11 +24,10 @@ type PriceRow = {
 };
 
 export async function POST(req: NextRequest) {
+  const { user, error } = await withAdmin(req);
+  if (error) return error;
+
   try {
-    const user = await getAuthUser(req);
-    if (!user || !['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
-      return unauthorized();
-    }
 
     const formData = await req.formData();
     const fichasFile = formData.get('fichas') as File | null;
