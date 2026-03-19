@@ -4,6 +4,7 @@ import { Tag, Plus, Pencil, Check, X, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
 import { slugify } from '@/lib/utils/api';
+import { useAuthStore } from '@/hooks/useAuth';
 
 type Category = {
   id: string; name: string; slug: string; parentId: string | null;
@@ -12,27 +13,31 @@ type Category = {
 
 export default function CategoriasClient({ categories: initial }: { categories: Category[] }) {
   const [categories, setCategories] = useState(initial);
-  const [editId, setEditId] = useState<string | null>(null);
+  const [editId, setEditId]   = useState<string | null>(null);
   const [editName, setEditName] = useState('');
-  const [newName, setNewName] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [newName, setNewName]   = useState('');
+  const [loading, setLoading]   = useState(false);
+  const { accessToken }         = useAuthStore();
   const router = useRouter();
+
+  const authHeaders = (): Record<string, string> => ({
+    'Content-Type': 'application/json',
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  });
 
   const saveEdit = async (id: string) => {
     if (!editName.trim()) return;
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/categories/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        method: 'PATCH', headers: authHeaders(), credentials: 'include',
         body: JSON.stringify({ name: editName.trim(), slug: slugify(editName.trim()) }),
       });
-      if (!res.ok) throw new Error('Error al guardar');
+      if (!res.ok) throw new Error((await res.json()).error || 'Error');
       setCategories(cs => cs.map(c => c.id === id ? { ...c, name: editName.trim() } : c));
       setEditId(null);
       toast.success('Categoría actualizada');
-    } catch { toast.error('Error al guardar'); }
+    } catch (e: any) { toast.error(e.message); }
     finally { setLoading(false); }
   };
 
@@ -41,9 +46,7 @@ export default function CategoriasClient({ categories: initial }: { categories: 
     setLoading(true);
     try {
       const res = await fetch('/api/admin/categories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        method: 'POST', headers: authHeaders(), credentials: 'include',
         body: JSON.stringify({ name: newName.trim(), slug: slugify(newName.trim()) }),
       });
       const data = await res.json();
@@ -57,18 +60,18 @@ export default function CategoriasClient({ categories: initial }: { categories: 
 
   const toggleActive = async (id: string, current: boolean) => {
     try {
-      await fetch(`/api/admin/categories/${id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      const res = await fetch(`/api/admin/categories/${id}`, {
+        method: 'PATCH', headers: authHeaders(), credentials: 'include',
         body: JSON.stringify({ isActive: !current }),
       });
+      if (!res.ok) throw new Error((await res.json()).error || 'Error');
       setCategories(cs => cs.map(c => c.id === id ? { ...c, isActive: !current } : c));
       toast.success(!current ? 'Activada' : 'Desactivada');
-    } catch { toast.error('Error'); }
+    } catch (e: any) { toast.error(e.message); }
   };
 
   return (
     <div className="space-y-4">
-      {/* New category */}
       <div className="bg-white rounded-2xl border border-champagne-100 p-5">
         <h2 className="font-sans font-semibold text-charcoal-700 mb-3">Nueva categoría</h2>
         <div className="flex gap-3">
@@ -83,12 +86,11 @@ export default function CategoriasClient({ categories: initial }: { categories: 
         </div>
       </div>
 
-      {/* List */}
       <div className="bg-white rounded-2xl border border-champagne-100 overflow-hidden">
         <table className="w-full">
           <thead>
             <tr className="border-b border-champagne-100 bg-champagne-50/50">
-              {['Categoría', 'Slug', 'Productos', 'Estado', 'Acciones'].map(h => (
+              {['Categoría','Slug','Productos','Estado','Acciones'].map(h => (
                 <th key={h} className="text-left font-sans text-xs font-semibold text-charcoal-400 uppercase tracking-wider px-4 py-4">{h}</th>
               ))}
             </tr>
