@@ -1,0 +1,177 @@
+# ============================================================
+# DIVINITTYS - CI/CD Pipeline
+# GitHub Actions
+# ============================================================
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ── 1. Unit + Integration Tests ──────────────────────────
+  unit-integration:
+    name: Unit & Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --include=dev
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        env:
+          PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: "1"
+
+      - name: Run Unit Tests
+        run: npm run test:unit
+        env:
+          JWT_SECRET: "ci-test-jwt-secret-minimum-32-chars!!"
+          JWT_REFRESH_SECRET: "ci-test-refresh-secret-minimum-32!!"
+
+      - name: Run Integration Tests
+        run: npm run test:integration
+        env:
+          JWT_SECRET: "ci-test-jwt-secret-minimum-32-chars!!"
+          JWT_REFRESH_SECRET: "ci-test-refresh-secret-minimum-32!!"
+
+      - name: Run Smoke Tests
+        run: npm run test:smoke
+        env:
+          JWT_SECRET: "ci-test-jwt-secret-minimum-32-chars!!"
+          JWT_REFRESH_SECRET: "ci-test-refresh-secret-minimum-32!!"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 7
+
+  # ── 2. TypeScript Type Check ─────────────────────────────
+  typecheck:
+    name: TypeScript Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: 'npm' }
+      - run: npm ci --include=dev
+      - run: npx prisma generate
+        env: { PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: "1" }
+      - run: npx tsc --noEmit
+
+  # ── 3. E2E Tests (runs on full stack) ────────────────────
+  e2e:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Only run E2E on main/develop push, not on PRs (too slow)
+    if: github.event_name == 'push'
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: divinittys
+          POSTGRES_PASSWORD: divinittys_secret
+          POSTGRES_DB: divinittys_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: 'npm' }
+
+      - name: Install dependencies
+        run: npm ci --include=dev
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Generate Prisma Client + Run Migrations
+        run: |
+          npx prisma generate
+          npx prisma migrate deploy
+          npx tsx prisma/seed.ts
+        env:
+          DATABASE_URL: postgresql://divinittys:divinittys_secret@localhost:5432/divinittys_test
+          PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: "1"
+
+      - name: Start Next.js Dev Server
+        run: npm run dev &
+        env:
+          DATABASE_URL: postgresql://divinittys:divinittys_secret@localhost:5432/divinittys_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: "ci-e2e-jwt-secret-minimum-32-chars!!"
+          JWT_REFRESH_SECRET: "ci-e2e-refresh-secret-minimum-32!!"
+          NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+          NEXT_TELEMETRY_DISABLED: "1"
+          NODE_ENV: development
+
+      - name: Wait for server to be ready
+        run: |
+          timeout 60 sh -c 'until curl -sf http://localhost:3000/api/health; do sleep 2; done'
+
+      - name: Run E2E Tests
+        run: npm run test:e2e
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  # ── 4. Docker Build Check ─────────────────────────────────
+  docker-build:
+    name: Docker Build Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Test Docker build (development target)
+        run: |
+          docker build --target development --tag divinittys:ci-test .
+          echo "✅ Docker build successful"

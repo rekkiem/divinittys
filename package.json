@@ -19,9 +19,15 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:smoke": "vitest run src/tests/smoke",
+    "test:smoke": "vitest run src/tests/smoke/",
     "search:reindex": "npx tsx scripts/reindex-search.ts",
-    "health": "npx tsx scripts/health-check.ts"
+    "health": "npx tsx scripts/health-check.ts",
+    "test:unit": "vitest run src/tests/unit/",
+    "test:integration": "vitest run src/tests/integration/",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "test:all": "vitest run && playwright test"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.600.0",
@@ -80,6 +86,7 @@
     "zustand": "4.5.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.45.3",
     "@types/bcryptjs": "2.4.6",
     "@types/node": "20.14.0",
     "@types/nodemailer": "6.4.15",
@@ -89,6 +96,7 @@
     "@vitest/coverage-v8": "2.1.9",
     "eslint": "8.57.0",
     "eslint-config-next": "14.2.35",
+    "msw": "^2.12.13",
     "prisma": "5.15.0",
     "supertest": "7.0.0",
     "tsx": "4.15.0",
