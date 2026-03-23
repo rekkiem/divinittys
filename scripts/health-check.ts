@@ -1,95 +1,129 @@
 /**
  * scripts/health-check.ts
- * Valida la disponibilidad de todos los servicios
- * Uso: npx tsx scripts/health-check.ts
+ * Health check for all DIVINITTYS services.
+ * Works both inside Docker (service names) and on host (localhost).
+ *
+ * Usage:
+ *   docker exec divinittys_app npx tsx scripts/health-check.ts
+ *   npm run health    (from host - uses localhost URLs)
  */
 import { PrismaClient } from '@prisma/client';
 
-async function checkPostgres(): Promise<boolean> {
-  const prisma = new PrismaClient();
+// Detect if running inside Docker (service hostnames available)
+const isDocker  = process.env.RUNNING_IN_DOCKER === 'true'
+               || process.env.DATABASE_URL?.includes('@postgres:')
+               || false;
+
+const DB_URL    = process.env.DATABASE_URL || 'postgresql://divinittys:divinittys_secret@localhost:5432/divinittys';
+const MEILI_URL = process.env.MEILISEARCH_URL || 'http://localhost:7700';
+const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+const APP_URL   = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
+const results: { service: string; ok: boolean; msg: string }[] = [];
+
+async function check(service: string, fn: () => Promise<string>) {
+  try {
+    const msg = await fn();
+    results.push({ service, ok: true, msg });
+    console.log(`  ✅ ${service}: ${msg}`);
+  } catch (e: any) {
+    const msg = e.message?.split('\n')[0] ?? String(e);
+    results.push({ service, ok: false, msg });
+    console.log(`  ❌ ${service}: ${msg}`);
+  }
+}
+
+async function checkPostgres() {
+  const prisma = new PrismaClient({ datasources: { db: { url: DB_URL } } });
   try {
     await prisma.$queryRaw`SELECT 1`;
-    console.log('  ✅ PostgreSQL: OK');
-    return true;
-  } catch (e) {
-    console.log('  ❌ PostgreSQL:', e instanceof Error ? e.message : e);
-    return false;
+    return 'Connected';
   } finally {
     await prisma.$disconnect();
   }
 }
 
-async function checkMeilisearch(): Promise<boolean> {
-  const url = process.env.MEILISEARCH_URL || 'http://localhost:7700';
+async function checkMeilisearch() {
+  const ac = new AbortController();
+  const timeout = setTimeout(() => ac.abort(), 5000);
   try {
-    const res = await fetch(`${url}/health`);
+    const res = await fetch(`${MEILI_URL}/health`, { signal: ac.signal });
     const data = await res.json() as { status?: string };
-    if (data.status === 'available') {
-      console.log('  ✅ Meilisearch: OK');
-      return true;
-    }
-    console.log('  ❌ Meilisearch: status =', data.status);
-    return false;
-  } catch (e) {
-    console.log('  ❌ Meilisearch:', e instanceof Error ? e.message : e);
-    return false;
+    if (data.status === 'available') return 'OK';
+    throw new Error(`status=${data.status}`);
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
-async function checkRedis(): Promise<boolean> {
-  const url = process.env.REDIS_URL || 'redis://localhost:6379';
-  try {
-    const { createClient } = await import('redis') as any;
-    const client = createClient({ url });
-    await client.connect();
-    await client.ping();
-    await client.disconnect();
-    console.log('  ✅ Redis: OK');
-    return true;
-  } catch {
-    // ioredis fallback
-    try {
-      const { default: Redis } = await import('ioredis') as any;
-      const redis = new Redis(url);
-      await redis.ping();
-      redis.disconnect();
-      console.log('  ✅ Redis: OK');
-      return true;
-    } catch (e) {
-      console.log('  ❌ Redis:', e instanceof Error ? e.message : e);
-      return false;
-    }
-  }
+async function checkRedis() {
+  // Use a simple TCP connection test instead of ioredis to avoid unhandled errors
+  const url = new URL(REDIS_URL.replace('redis://', 'http://'));
+  const host = url.hostname;
+  const port = parseInt(url.port || '6379');
+
+  return new Promise<string>((resolve, reject) => {
+    const net = require('net');
+    const socket = new net.Socket();
+    const timer = setTimeout(() => { socket.destroy(); reject(new Error('Connection timeout')); }, 5000);
+
+    socket.connect(port, host, () => {
+      clearTimeout(timer);
+      socket.write('PING\r\n');
+    });
+
+    socket.on('data', (data: Buffer) => {
+      if (data.toString().includes('+PONG') || data.toString().includes('PONG')) {
+        socket.destroy();
+        resolve('PONG received');
+      }
+    });
+
+    socket.on('error', (err: Error) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
 }
 
-async function checkApp(): Promise<boolean> {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+async function checkApp() {
+  const ac = new AbortController();
+  const timeout = setTimeout(() => ac.abort(), 8000);
   try {
-    const res = await fetch(`${appUrl}/api/health`, { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(`${APP_URL}/api/health`, { signal: ac.signal });
     if (res.ok) {
-      console.log('  ✅ App Next.js: OK');
-      return true;
+      const data = await res.json() as { status?: string };
+      return `HTTP ${res.status} — ${data.status || 'ok'}`;
     }
-    console.log('  ❌ App Next.js: HTTP', res.status);
-    return false;
-  } catch (e) {
-    console.log('  ❌ App Next.js:', e instanceof Error ? e.message : 'not reachable');
-    return false;
+    throw new Error(`HTTP ${res.status}`);
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
 async function main() {
-  console.log('\n🔍 DIVINITTYS Health Check\n');
-  const results = await Promise.all([
-    checkPostgres(),
-    checkMeilisearch(),
-    checkRedis(),
-    checkApp(),
+  console.log('\n🔍 DIVINITTYS Health Check');
+  console.log(`   Mode: ${isDocker ? 'Docker (internal)' : 'Host (localhost)'}\n`);
+
+  await Promise.all([
+    check('PostgreSQL',    checkPostgres),
+    check('Meilisearch',   checkMeilisearch),
+    check('Redis',         checkRedis),
+    check('App Next.js',   checkApp),
   ]);
 
-  const allOk = results.every(Boolean);
-  console.log(`\n${allOk ? '✅ All services healthy' : '⚠️  Some services have issues'}`);
+  const allOk = results.every(r => r.ok);
+  const failed = results.filter(r => !r.ok);
+
+  console.log(`\n${allOk ? '✅ All services healthy' : `⚠️  ${failed.length} service(s) unavailable`}`);
+
+  if (!allOk) {
+    console.log('\n💡 Troubleshooting:');
+    console.log('   Run inside Docker: docker exec divinittys_app npx tsx scripts/health-check.ts');
+    console.log('   Full reset: docker compose down -v && docker compose up --build');
+  }
+
   process.exit(allOk ? 0 : 1);
 }
 
-main();
+main().catch(e => { console.error(e); process.exit(1); });
