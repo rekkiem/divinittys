@@ -1,7 +1,11 @@
 /**
  * src/lib/admin-auth.ts
- * Middleware centralizado para rutas de administración.
- * Usar en todos los handlers bajo /api/admin/*
+ * Centralized admin authorization middleware.
+ *
+ * DESIGN: Always verifies role from DATABASE (not JWT) to ensure:
+ * - Role promotions take effect immediately
+ * - Role revocations take effect immediately
+ * - No stale JWT role mismatches cause 403 false-positives
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getTokenFromRequest, verifyAccessToken, getAuthUser } from './auth';
@@ -18,18 +22,22 @@ export type AdminUser = {
 };
 
 /**
- * Verifica que la request venga de un admin.
- * Primero verifica JWT (rápido, sin query DB), luego confirma usuario en DB.
- * Retorna el usuario o una NextResponse de error.
+ * requireAdmin: verify request comes from an active admin user.
+ *
+ * Flow:
+ * 1. Validate token exists + is cryptographically valid
+ * 2. Fetch user from DB (source of truth for role)
+ * 3. Check DB role is ADMIN or SUPER_ADMIN
+ *
+ * NOTE: We do NOT check JWT role in step 1. This prevents false-403s
+ * when a user's DB role was changed after their last login.
  */
-export async function requireAdmin(
-  req: NextRequest
-): Promise<AdminUser | NextResponse> {
-  // Step 1: fast JWT check (no DB hit)
+export async function requireAdmin(req: NextRequest): Promise<AdminUser | NextResponse> {
   const token = getTokenFromRequest(req);
+
   if (!token) {
     return NextResponse.json(
-      { error: 'No autorizado — token no encontrado', hint: 'Asegúrate de estar autenticado como admin' },
+      { error: 'No autorizado', hint: 'Inicia sesión en /cuenta/login' },
       { status: 401 }
     );
   }
@@ -42,14 +50,7 @@ export async function requireAdmin(
     );
   }
 
-  if (!ADMIN_ROLES.includes(jwtPayload.role as AdminRole)) {
-    return NextResponse.json(
-      { error: 'Acceso denegado', required: ADMIN_ROLES, got: jwtPayload.role },
-      { status: 403 }
-    );
-  }
-
-  // Step 2: verify user still active in DB
+  // Always check role from DB — never trust JWT role for authorization
   const user = await getAuthUser(req);
   if (!user) {
     return NextResponse.json(
@@ -58,9 +59,14 @@ export async function requireAdmin(
     );
   }
 
-  if (!ADMIN_ROLES.includes(user.role as AdminRole)) {
+  if (!(ADMIN_ROLES as readonly string[]).includes(user.role)) {
     return NextResponse.json(
-      { error: 'Acceso denegado — rol insuficiente', required: ADMIN_ROLES, got: user.role },
+      {
+        error: 'Acceso denegado — rol insuficiente',
+        required: ADMIN_ROLES,
+        got: user.role,
+        hint: 'Si eres administrador, cierra sesión y vuelve a iniciar para actualizar tu token',
+      },
       { status: 403 }
     );
   }
@@ -68,22 +74,10 @@ export async function requireAdmin(
   return user as AdminUser;
 }
 
-/**
- * Type guard: diferencia AdminUser de NextResponse
- */
 export function isAdminUser(result: AdminUser | NextResponse): result is AdminUser {
   return !(result instanceof NextResponse);
 }
 
-/**
- * Helper de uso simplificado en handlers:
- *
- * export async function POST(req: NextRequest) {
- *   const auth = await withAdmin(req);
- *   if (auth.error) return auth.error;
- *   // auth.user es AdminUser
- * }
- */
 export async function withAdmin(req: NextRequest) {
   const result = await requireAdmin(req);
   if (result instanceof NextResponse) {
