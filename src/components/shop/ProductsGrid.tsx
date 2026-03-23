@@ -1,53 +1,80 @@
+/**
+ * ProductsGrid — Server Component
+ *
+ * RSC RULES FOLLOWED:
+ * ✅ No event handlers (onChange, onClick, etc.)
+ * ✅ No useState / useEffect
+ * ✅ Data fetching via Prisma directly
+ * ✅ Passes only serializable props to Client Components
+ * ✅ Delegates interactivity to SortSelector (Client) + ProductsPagination (Client)
+ */
 import { prisma } from '@/lib/prisma';
 import ProductCard from './ProductCard';
 import ProductsPagination from './ProductsPagination';
+import SortSelector from './SortSelector';
 
 const PAGE_SIZE = 24;
 
-export default async function ProductsGrid({
-  searchParams,
-}: {
-  searchParams: { [key: string]: string | undefined };
-}) {
-  const page = parseInt(searchParams.page || '1');
-  const skip = (page - 1) * PAGE_SIZE;
+type SearchParams = { [key: string]: string | undefined };
 
+function buildWhere(searchParams: SearchParams): any {
   const where: any = { isActive: true };
 
   if (searchParams.q) {
     where.OR = [
-      { name: { contains: searchParams.q, mode: 'insensitive' } },
+      { name:        { contains: searchParams.q, mode: 'insensitive' } },
       { description: { contains: searchParams.q, mode: 'insensitive' } },
-      { sku: { contains: searchParams.q, mode: 'insensitive' } },
-      { brand: { name: { contains: searchParams.q, mode: 'insensitive' } } },
+      { sku:         { contains: searchParams.q, mode: 'insensitive' } },
+      { brand:       { name: { contains: searchParams.q, mode: 'insensitive' } } },
     ];
   }
-  if (searchParams.category) where.category = { slug: searchParams.category };
-  if (searchParams.brand) where.brand = { slug: searchParams.brand };
-  if (searchParams.onSale === 'true') where.isOnSale = true;
-  if (searchParams.minPrice) where.basePrice = { ...where.basePrice, gte: Number(searchParams.minPrice) };
-  if (searchParams.maxPrice) where.basePrice = { ...where.basePrice, lte: Number(searchParams.maxPrice) };
 
+  if (searchParams.category) where.category = { slug: searchParams.category };
+  if (searchParams.brand)    where.brand    = { slug: searchParams.brand };
+  if (searchParams.onSale === 'true') where.isOnSale = true;
+
+  if (searchParams.minPrice) {
+    where.basePrice = { ...where.basePrice, gte: Number(searchParams.minPrice) };
+  }
+  if (searchParams.maxPrice) {
+    where.basePrice = { ...where.basePrice, lte: Number(searchParams.maxPrice) };
+  }
+
+  return where;
+}
+
+function buildOrderBy(sort?: string): any {
   const sortMap: Record<string, any> = {
-    newest: { createdAt: 'desc' },
-    price_asc: { basePrice: 'asc' },
+    newest:     { createdAt: 'desc' },
+    price_asc:  { basePrice: 'asc' },
     price_desc: { basePrice: 'desc' },
-    name_asc: { name: 'asc' },
-    featured: { isFeatured: 'desc' },
+    name_asc:   { name: 'asc' },
+    featured:   { isFeatured: 'desc' },
   };
-  const orderBy = sortMap[searchParams.sort || 'newest'] || { createdAt: 'desc' };
+  return sortMap[sort || 'newest'] ?? { createdAt: 'desc' };
+}
+
+export default async function ProductsGrid({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  const page  = Math.max(1, parseInt(searchParams.page || '1'));
+  const skip  = (page - 1) * PAGE_SIZE;
+  const sort  = searchParams.sort || 'newest';
+  const where = buildWhere(searchParams);
 
   const [products, total] = await prisma.$transaction([
     prisma.product.findMany({
       where,
       take: PAGE_SIZE,
       skip,
-      orderBy,
+      orderBy: buildOrderBy(sort),
       include: {
-        images: { where: { isMain: true }, take: 1 },
-        brand: { select: { name: true } },
+        images:    { where: { isMain: true }, take: 1 },
+        brand:     { select: { name: true } },
         inventory: { select: { stock: true } },
-        category: { select: { name: true, slug: true } },
+        category:  { select: { name: true, slug: true } },
       },
     }),
     prisma.product.count({ where }),
@@ -68,34 +95,24 @@ export default async function ProductsGrid({
 
   return (
     <div>
+      {/* Header row: count + sort */}
       <div className="flex items-center justify-between mb-6">
         <p className="font-sans text-sm text-charcoal-400">
           <span className="font-semibold text-charcoal-700">{total}</span> productos
         </p>
-        <select
-          name="sort"
-          defaultValue={searchParams.sort || 'newest'}
-          className="input-field !w-auto !py-2 text-sm"
-          onChange={(e) => {
-            const url = new URL(window.location.href);
-            url.searchParams.set('sort', e.target.value);
-            window.location.href = url.toString();
-          }}
-        >
-          <option value="newest">Más recientes</option>
-          <option value="price_asc">Precio: menor a mayor</option>
-          <option value="price_desc">Precio: mayor a menor</option>
-          <option value="name_asc">Nombre A-Z</option>
-          <option value="featured">Destacados</option>
-        </select>
+
+        {/* ✅ CORRECTO: SortSelector es Client Component — recibe solo datos serializables */}
+        <SortSelector currentSort={sort} searchParams={searchParams} />
       </div>
 
+      {/* Product grid */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         {products.map((product: any, i: number) => (
           <ProductCard key={product.id} product={product} index={i} />
         ))}
       </div>
 
+      {/* Pagination */}
       {totalPages > 1 && (
         <ProductsPagination
           currentPage={page}
