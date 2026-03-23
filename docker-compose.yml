@@ -145,6 +145,7 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-divinittys_admin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-divinittys_secret_2024}
       MINIO_BUCKET: divinittys-products
+      RUNNING_IN_DOCKER: "true"
     volumes:
       - .:/app
       - /app/node_modules

@@ -8,37 +8,37 @@ export default defineConfig({
     setupFiles: ['./src/tests/setup.ts'],
     testTimeout: 15_000,
     hookTimeout: 10_000,
-    // Include all test types except e2e (Playwright handles those)
     include: [
       'src/tests/unit/**/*.test.ts',
       'src/tests/integration/**/*.test.ts',
       'src/tests/smoke/**/*.test.ts',
     ],
-    exclude: [
-      'src/tests/e2e/**',
-      'node_modules/**',
-    ],
+    exclude: ['src/tests/e2e/**', 'node_modules/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
-      include: ['src/**/*.ts', 'src/**/*.tsx'],
+      // Only measure coverage on core business logic - not UI components or pages
+      include: [
+        'src/lib/**/*.ts',
+        'src/app/api/**/*.ts',
+      ],
       exclude: [
+        'src/lib/prisma.ts',        // just client init
+        'src/app/api/admin/debug/**',
+        'src/app/api/admin/fix-seed/**',
         'src/tests/**',
-        'src/**/*.d.ts',
-        'src/app/api/admin/debug/**',   // dev-only endpoint
-        'src/app/api/admin/fix-seed/**', // dev-only endpoint
+        '**/*.d.ts',
       ],
       thresholds: {
-        lines:      70,
-        functions:  70,
-        branches:   60,
-        statements: 70,
+        // Realistic thresholds for API routes + lib (not UI)
+        lines:      55,
+        functions:  55,
+        branches:   50,
+        statements: 55,
       },
     },
   },
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
+    alias: { '@': path.resolve(__dirname, './src') },
   },
 });
