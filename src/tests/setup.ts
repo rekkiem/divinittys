@@ -68,12 +68,31 @@ vi.mock('@/lib/prisma', () => ({
       upsert:     vi.fn(),
       updateMany: vi.fn(),
     },
+    setting: {
+      findMany: vi.fn().mockResolvedValue([]),
+      upsert:   vi.fn(),
+      update:   vi.fn(),
+      create:   vi.fn(),
+    },
+    payment: {
+      findFirst:  vi.fn(),
+      findUnique: vi.fn(),
+      create:     vi.fn(),
+      update:     vi.fn(),
+      updateMany: vi.fn(),
+    },
+    orderItem: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    productImage: {
+      count:      vi.fn().mockResolvedValue(0),
+      create:     vi.fn(),
+      updateMany: vi.fn(),
+    },
     review: {
       aggregate:  vi.fn().mockResolvedValue({ _avg: { rating: 0 }, _count: { rating: 0 } }),
     },
-    setting: {
-      upsert: vi.fn(),
-    },
+
   },
 }));
 

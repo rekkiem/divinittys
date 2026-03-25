@@ -86,26 +86,38 @@ export default function CheckoutForm() {
 
       if (!orderId) throw new Error('Order creation failed');
 
-      const payRes = await fetch('/api/payments', {
+      // Determine correct action by payment method
+      const action = paymentMethod === 'MERCADOPAGO' ? 'mp-preference' : 'webpay-init';
+      const payRes = await fetch(`/api/payments?action=${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId,
-          provider: paymentMethod,
-          amount: total() + (shippingQuote?.price || 0),
-          returnUrl: `${window.location.origin}/checkout/resultado`,
-        }),
+        credentials: 'include',
+        body: JSON.stringify({ orderId }),
       });
       const payData = await payRes.json();
 
+      if (!payRes.ok) {
+        throw new Error(payData.error || 'Error al iniciar el pago');
+      }
+
       if (paymentMethod === 'WEBPAY' && payData.data?.url) {
         clearCart();
-        window.location.href = payData.data.url;
-      } else if (paymentMethod === 'MERCADOPAGO' && payData.data?.init_point) {
+        // Webpay requires form POST, not redirect
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = payData.data.url;
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'token_ws';
+        input.value = payData.data.token;
+        form.appendChild(input);
+        document.body.appendChild(form);
+        form.submit();
+      } else if (paymentMethod === 'MERCADOPAGO' && (payData.data?.init_point || payData.data?.sandboxInitPoint)) {
         clearCart();
-        window.location.href = payData.data.init_point;
+        window.location.href = payData.data.init_point || payData.data.sandboxInitPoint;
       } else {
-        throw new Error('Payment init failed');
+        throw new Error('No se pudo iniciar el pago. Verifique que el pedido se creó correctamente.');
       }
     } catch (err) {
       toast.error('Error al procesar el pago. Por favor intenta nuevamente.');
