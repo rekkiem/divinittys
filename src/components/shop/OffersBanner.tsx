@@ -6,12 +6,14 @@ import { motion } from 'framer-motion';
 import { Tag, ArrowRight, Clock } from 'lucide-react';
 import { formatCLP, calculateDiscount } from '@/lib/utils/api';
 
+type PriceLike = number | string | { toString: () => string };
+
 type Product = {
   id: string;
   name: string;
   slug: string;
-  basePrice: number | string;
-  comparePrice?: number | string | null;
+  basePrice: PriceLike;
+  comparePrice?: PriceLike | null;
   images: { url: string }[];
   brand?: { name: string } | null;
 };

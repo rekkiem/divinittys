@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { ShoppingBag, Heart, Share2, Star, ChevronRight, Minus, Plus, Truck, ShieldCheck, RefreshCw } from 'lucide-react';
@@ -10,6 +10,8 @@ import { useWishlistStore } from '@/hooks/useWishlist';
 import { formatCLP, calculateDiscount } from '@/lib/utils/api';
 import toast from 'react-hot-toast';
 
+type PriceLike = number | string | { toString: () => string };
+
 type Product = {
   id: string;
   name: string;
@@ -17,8 +19,8 @@ type Product = {
   sku: string;
   description?: string | null;
   shortDescription?: string | null;
-  basePrice: number | string;
-  comparePrice?: number | string | null;
+  basePrice: PriceLike;
+  comparePrice?: PriceLike | null;
   isOnSale?: boolean;
   isFeatured?: boolean;
   images: { id: string; url: string; alt?: string | null; isMain: boolean }[];
@@ -26,7 +28,7 @@ type Product = {
   category?: { id: string; name: string; slug: string; parent?: { name: string; slug: string } | null } | null;
   inventory?: { stock: number; allowBackorder: boolean } | null;
   attributes: { id: string; name: string; value: string }[];
-  variants: { id: string; name: string; sku: string; price: number | string; stock: number; options?: any }[];
+  variants: { id: string; name: string; sku: string; price: PriceLike; stock: number; options?: any }[];
   reviews: { id: string; rating: number; title?: string | null; body?: string | null; user: { name?: string | null }; createdAt: Date }[];
 };
 
@@ -38,6 +40,7 @@ const TRUST_BADGES = [
 
 export default function ProductDetail({ product }: { product: Product }) {
   const [selectedImage, setSelectedImage] = useState(0);
+  const [hydrated, setHydrated] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState<string | null>(
     product.variants.length === 1 ? product.variants[0].id : null
   );
@@ -52,10 +55,18 @@ export default function ProductDetail({ product }: { product: Product }) {
   const discount = comparePrice ? calculateDiscount(price, comparePrice) : 0;
   const stock = product.inventory?.stock ?? 0;
   const inStock = stock > 0 || !!product.inventory?.allowBackorder;
-  const inWishlist = isInWishlist(product.id);
+  const inWishlist = hydrated ? isInWishlist(product.id) : false;
   const avgRating = product.reviews.length
     ? product.reviews.reduce((sum, r) => sum + r.rating, 0) / product.reviews.length
     : 0;
+  const reviewDateFormatter = useMemo(
+    () => new Intl.DateTimeFormat('es-CL', { timeZone: 'UTC' }),
+    []
+  );
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   const handleAddToCart = () => {
     addItem({
@@ -330,7 +341,7 @@ export default function ProductDetail({ product }: { product: Product }) {
                       </div>
                     </div>
                     <span className="font-sans text-xs text-charcoal-400">
-                      {new Date(review.createdAt).toLocaleDateString('es-CL')}
+                      {reviewDateFormatter.format(new Date(review.createdAt))}
                     </span>
                   </div>
                   {review.title && <p className="font-sans font-semibold text-charcoal-700 mb-1">{review.title}</p>}
