@@ -1,23 +1,36 @@
-export type QueueJob = { name: string; data: Record<string, unknown> };
+/**
+ * src/lib/queue/core.ts
+ * BullMQ core helpers — queue and worker factory functions
+ */
+import { Queue, Worker, Job } from 'bullmq';
 
-type Handler = (job: QueueJob) => Promise<void>;
+export type QueueJob = Job;
 
-const handlers = new Map<string, Handler>();
+const connection = {
+  host: process.env.REDIS_HOST || (process.env.REDIS_URL?.replace('redis://', '').split(':')[0] ?? 'redis'),
+  port: parseInt(process.env.REDIS_PORT || process.env.REDIS_URL?.split(':').pop() || '6379'),
+};
 
-export function createQueue(name: string) {
-  return {
-    add: async (jobName: string, data: Record<string, unknown>) => {
-      const handler = handlers.get(name);
-      if (handler) await handler({ name: jobName, data });
-    },
-  };
+const defaultJobOptions = {
+  attempts: 3,
+  backoff: { type: 'exponential' as const, delay: 2000 },
+  removeOnComplete: 100,
+  removeOnFail: 50,
+};
+
+export function createQueue(name: string): Queue {
+  return new Queue(`divinittys:${name}`, {
+    connection,
+    defaultJobOptions,
+  });
 }
 
-export function createWorker(name: string, processor: Handler) {
-  handlers.set(name, processor);
-  return { close: async () => handlers.delete(name) };
-}
-
-export function createQueueEvents(_name: string) {
-  return null;
+export function createWorker(
+  name: string,
+  processor: (job: Job) => Promise<unknown>
+): Worker {
+  return new Worker(`divinittys:${name}`, processor, {
+    connection,
+    concurrency: 5,
+  });
 }

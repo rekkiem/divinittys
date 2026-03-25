@@ -3,12 +3,14 @@
 import ProductCard from './ProductCard';
 import { motion } from 'framer-motion';
 
+type PriceLike = number | string | { toString: () => string };
+
 type Product = {
   id: string;
   name: string;
   slug: string;
-  basePrice: number | string;
-  comparePrice?: number | string | null;
+  basePrice: PriceLike;
+  comparePrice?: PriceLike | null;
   isOnSale?: boolean;
   isFeatured?: boolean;
   images: { url: string; alt?: string | null }[];
