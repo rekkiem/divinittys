@@ -1,22 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { MouseEvent, useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Heart, ShoppingBag, Star, Eye } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Heart, ShoppingBag, Eye } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useCartStore } from '@/hooks/useCart';
 import { useWishlistStore } from '@/hooks/useWishlist';
 import { formatCLP, calculateDiscount } from '@/lib/utils/api';
 import toast from 'react-hot-toast';
 
+type PriceLike = number | string | { toString: () => string };
+
 type ProductCardProps = {
   product: {
     id: string;
     name: string;
     slug: string;
-    basePrice: number | string;
-    comparePrice?: number | string | null;
+    basePrice: PriceLike;
+    comparePrice?: PriceLike | null;
     isOnSale?: boolean;
     isFeatured?: boolean;
     images: { url: string; alt?: string | null }[];
@@ -29,17 +32,23 @@ type ProductCardProps = {
 
 export default function ProductCard({ product, index = 0 }: ProductCardProps) {
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const router = useRouter();
   const { addItem } = useCartStore();
   const { toggle, isInWishlist } = useWishlistStore();
 
   const price = Number(product.basePrice);
   const comparePrice = product.comparePrice ? Number(product.comparePrice) : null;
   const discount = comparePrice ? calculateDiscount(price, comparePrice) : 0;
-  const inWishlist = isInWishlist(product.id);
+  const inWishlist = hydrated ? isInWishlist(product.id) : false;
   const inStock = !product.inventory || product.inventory.stock > 0;
-  const imageUrl = product.images[0]?.url;
+  const imageUrl = product.images?.[0]?.url || '/placeholder-product.svg';
 
-  const handleAddToCart = (e: React.MouseEvent) => {
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
+
+  const handleAddToCart = (e: MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
     if (!inStock) return;
@@ -54,11 +63,17 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
     toast.success(`${product.name} agregado al carrito`);
   };
 
-  const handleWishlist = (e: React.MouseEvent) => {
+  const handleWishlist = (e: MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
     toggle(product.id);
     toast.success(inWishlist ? 'Eliminado de favoritos' : 'Agregado a favoritos');
+  };
+
+  const openDetails = (e: MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    router.push(`/productos/${product.slug}`);
   };
 
   return (
@@ -67,11 +82,12 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: index * 0.05 }}
     >
-      <Link href={`/productos/${product.slug}`}>
-        <div className="card-product relative overflow-hidden">
+      <div className="group card-product relative overflow-hidden">
+        <Link href={`/productos/${product.slug}`} className="absolute inset-0 z-10" aria-label={`Ver ${product.name}`} />
+        <div className="relative z-0">
           {/* Image */}
           <div className="relative aspect-square overflow-hidden bg-champagne-50">
-            {imageUrl ? (
+            {imageUrl && imageUrl !== '/placeholder-product.svg' ? (
               <Image
                 src={imageUrl}
                 alt={product.name}
@@ -105,7 +121,7 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
             </div>
 
             {/* Actions overlay */}
-            <div className="absolute top-3 right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <div className="absolute top-3 right-3 z-20 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
               <button
                 onClick={handleWishlist}
                 className={`w-9 h-9 rounded-full bg-white shadow-md flex items-center justify-center transition-colors ${
@@ -114,17 +130,17 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
               >
                 <Heart className={`w-4 h-4 ${inWishlist ? 'fill-current' : ''}`} />
               </button>
-              <Link
-                href={`/productos/${product.slug}`}
-                onClick={(e) => e.stopPropagation()}
+              <button
+                onClick={openDetails}
                 className="w-9 h-9 rounded-full bg-white shadow-md flex items-center justify-center text-charcoal-400 hover:text-primary-500 transition-colors"
+                aria-label={`Abrir ${product.name}`}
               >
                 <Eye className="w-4 h-4" />
-              </Link>
+              </button>
             </div>
 
             {/* Add to cart - hover */}
-            <div className="absolute bottom-0 left-0 right-0 p-3 translate-y-full group-hover:translate-y-0 transition-transform duration-200">
+            <div className="absolute bottom-0 left-0 right-0 z-20 p-3 translate-y-full group-hover:translate-y-0 transition-transform duration-200">
               <button
                 onClick={handleAddToCart}
                 disabled={!inStock}
@@ -160,7 +176,7 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
             </div>
           </div>
         </div>
-      </Link>
+      </div>
     </motion.div>
   );
 }
