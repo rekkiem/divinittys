@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { ShoppingBag, Search, Heart, User, Menu, X, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCartStore } from '@/hooks/useCart';
@@ -15,13 +14,14 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
-  const pathname = usePathname();
+  const [hydrated, setHydrated] = useState(false);
   const { items } = useCartStore();
   const { user } = useAuthStore();
 
-  const cartCount = items.reduce((sum, item) => sum + item.quantity, 0);
+  const cartCount = hydrated ? items.reduce((sum, item) => sum + item.quantity, 0) : 0;
 
   useEffect(() => {
+    setHydrated(true);
     const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
@@ -101,7 +101,7 @@ export default function Navbar() {
               </Link>
 
               <Link
-                href={user ? '/cuenta' : '/cuenta/login'}
+                href={hydrated && user ? '/cuenta' : '/cuenta/login'}
                 className="p-2 rounded-full hover:bg-primary-50 text-charcoal-500 hover:text-primary-500 transition-colors hidden sm:flex"
                 aria-label="Mi cuenta"
               >

@@ -1,46 +1,87 @@
-import { NextRequest } from 'next/server';
+/**
+ * /api/payments — Payment gateway integration
+ * Supports: Transbank Webpay Plus + MercadoPago
+ *
+ * POST /api/payments?action=webpay-init      → init Webpay transaction
+ * POST /api/payments?action=webpay-commit    → commit after redirect
+ * POST /api/payments?action=mp-preference   → create MP preference
+ * POST /api/payments                         → auto-detect from body.provider
+ * GET  /api/payments                         → MercadoPago webhook (IPN)
+ */
+import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { createWebpayTransaction, commitWebpayTransaction } from '@/lib/payments/webpay';
 import { createMPPreference } from '@/lib/payments/mercadopago';
 import { ok, badRequest, notFound, serverError } from '@/lib/utils/api';
+import { getAuthUser } from '@/lib/auth';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
+// ── Helpers ──────────────────────────────────────────────────────
+async function findOrderAndValidate(orderId: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: {
+      payment: true,
+      items: { include: { product: { include: { images: { where: { isMain: true }, take: 1 } } } } },
+    },
+  });
+  if (!order)                          throw Object.assign(new Error('Pedido no encontrado'), { code: 404 });
+  if (order.payment?.status === 'PAID') throw Object.assign(new Error('Este pedido ya fue pagado'), { code: 400 });
+  return order;
+}
+
+async function ensurePaymentRecord(orderId: string, provider: string, total: number) {
+  const existing = await prisma.payment.findFirst({ where: { orderId } });
+  if (existing) {
+    return prisma.payment.update({
+      where: { id: existing.id },
+      data: { provider: provider as any, status: 'PROCESSING', amount: total },
+    });
+  }
+  return prisma.payment.create({
+    data: { orderId, provider: provider as any, status: 'PROCESSING', amount: total, currency: 'CLP' },
+  });
+}
+
+// ── POST handler ──────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const action = searchParams.get('action');
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
 
-    // ---- Webpay: Initiate ----
+    // Auto-detect action: from ?action= or from body.provider
+    let action = searchParams.get('action');
+    if (!action) {
+      const provider = String(body.provider || '').toUpperCase();
+      action = provider === 'MERCADOPAGO' ? 'mp-preference' : 'webpay-init';
+    }
+
+    // ── Webpay: init ─────────────────────────────────────────────
     if (action === 'webpay-init') {
       const { orderId } = z.object({ orderId: z.string() }).parse(body);
 
-      const order = await prisma.order.findUnique({
-        where: { id: orderId },
-        include: { payment: true },
-      });
+      const order = await findOrderAndValidate(orderId);
+      const total = Number(order.total);
 
-      if (!order) return notFound('Pedido no encontrado');
-      if (order.payment?.status === 'PAID') return badRequest('Pedido ya pagado');
-
-      const tbkResponse = await createWebpayTransaction({
-        buyOrder: order.orderNumber,
-        sessionId: `${orderId}-${Date.now()}`,
-        amount: Number(order.total),
+      const tbk = await createWebpayTransaction({
+        buyOrder:  order.orderNumber.slice(0, 26), // Transbank max 26 chars
+        sessionId: `${orderId.slice(0, 8)}-${Date.now()}`,
+        amount:    total,
         returnUrl: `${APP_URL}/checkout/webpay-return`,
       });
 
+      await ensurePaymentRecord(orderId, 'WEBPAY', total);
       await prisma.payment.update({
         where: { orderId },
-        data: { token: tbkResponse.token, status: 'PROCESSING', provider: 'WEBPAY' },
+        data: { token: tbk.token, status: 'PROCESSING' },
       });
 
-      return ok({ token: tbkResponse.token, url: tbkResponse.url });
+      return ok({ token: tbk.token, url: tbk.url });
     }
 
-    // ---- Webpay: Commit ----
+    // ── Webpay: commit ───────────────────────────────────────────
     if (action === 'webpay-commit') {
       const { token_ws } = z.object({ token_ws: z.string() }).parse(body);
 
@@ -48,88 +89,65 @@ export async function POST(req: NextRequest) {
         where: { token: token_ws },
         include: { order: true },
       });
-
       if (!payment) return notFound('Pago no encontrado');
 
-      const tbkResult = await commitWebpayTransaction(token_ws);
+      const result = await commitWebpayTransaction(token_ws);
+      const approved = result && (result as any).response_code === 0 && (result as any).status === 'AUTHORIZED';
 
-      // response_code === 0 means approved in Webpay SDK v6
-      const isApproved =
-        tbkResult &&
-        (tbkResult as any).response_code === 0 &&
-        (tbkResult as any).status === 'AUTHORIZED';
-
-      if (isApproved) {
+      if (approved) {
         await prisma.$transaction(async (tx: any) => {
           await tx.payment.update({
             where: { id: payment.id },
             data: {
-              status: 'PAID',
-              externalId: (tbkResult as any).authorization_code,
-              authCode: (tbkResult as any).authorization_code,
-              installments: (tbkResult as any).installments_number || 1,
-              paymentMethod: (tbkResult as any).payment_type_code,
-              responseData: tbkResult as any,
-              paidAt: new Date(),
+              status: 'PAID', paidAt: new Date(),
+              externalId:    (result as any).authorization_code,
+              authCode:      (result as any).authorization_code,
+              installments:  (result as any).installments_number || 1,
+              paymentMethod: (result as any).payment_type_code,
+              responseData:  result as any,
             },
           });
-
           await tx.order.update({
             where: { id: payment.orderId },
             data: { status: 'CONFIRMED', paymentStatus: 'PAID' },
           });
-
-          const orderItems = await tx.orderItem.findMany({
-            where: { orderId: payment.orderId },
-          });
-          for (const item of orderItems) {
+          // Decrement actual stock
+          const items = await tx.orderItem.findMany({ where: { orderId: payment.orderId } });
+          for (const item of items) {
             await tx.inventory.updateMany({
               where: { productId: item.productId },
-              data: {
-                stock: { decrement: item.quantity },
-                reservedStock: { decrement: item.quantity },
-              },
+              data: { stock: { decrement: item.quantity }, reservedStock: { decrement: item.quantity } },
             });
           }
         });
-
         return ok({ success: true, orderNumber: payment.order.orderNumber });
       } else {
         await prisma.payment.update({
           where: { id: payment.id },
-          data: { status: 'FAILED', responseData: tbkResult as any },
+          data: { status: 'FAILED', responseData: result as any },
         });
         await prisma.order.update({
           where: { id: payment.orderId },
           data: { paymentStatus: 'FAILED' },
         });
-
         return ok({ success: false, message: 'Pago rechazado por Transbank' });
       }
     }
 
-    // ---- MercadoPago: Create Preference ----
+    // ── MercadoPago: preference ───────────────────────────────────
     if (action === 'mp-preference') {
       const { orderId } = z.object({ orderId: z.string() }).parse(body);
+      const order = await findOrderAndValidate(orderId);
+      const total = Number(order.total);
 
-      const order = await prisma.order.findUnique({
-        where: { id: orderId },
-        include: {
-          items: { include: { product: { include: { images: { take: 1 } } } } },
-          payment: true,
-        },
-      });
-
-      if (!order) return notFound('Pedido no encontrado');
-
-      const mpResponse = await createMPPreference(
+      const mp = await createMPPreference(
         {
           items: order.items.map((item: any) => ({
-            id: item.productId,
-            title: item.name,
-            quantity: item.quantity,
+            id:         item.productId,
+            title:      item.name,
+            quantity:   item.quantity,
             unit_price: Number(item.price),
-            picture_url: item.product.images[0]?.url,
+            picture_url: item.product?.images?.[0]?.url,
           })),
           backUrls: {
             success: `${APP_URL}/checkout/mp-return?status=success&orderId=${orderId}`,
@@ -137,64 +155,70 @@ export async function POST(req: NextRequest) {
             pending: `${APP_URL}/checkout/mp-return?status=pending&orderId=${orderId}`,
           },
           externalReference: order.orderNumber,
-          notificationUrl: `${APP_URL}/api/payments/mp-webhook`,
+          notificationUrl: `${APP_URL}/api/payments?webhook=mp`,
         },
         `divinittys-${orderId}`
       );
 
+      await ensurePaymentRecord(orderId, 'MERCADOPAGO', total);
       await prisma.payment.update({
         where: { orderId },
-        data: { externalId: mpResponse.id, status: 'PROCESSING', provider: 'MERCADOPAGO' },
+        data: { externalId: mp.id, status: 'PROCESSING' },
       });
 
       return ok({
-        preferenceId: mpResponse.id,
-        initPoint: mpResponse.init_point,
-        sandboxInitPoint: mpResponse.sandbox_init_point,
+        preferenceId:    mp.id,
+        initPoint:       mp.init_point,
+        sandboxInitPoint: mp.sandbox_init_point,
+        // CheckoutForm uses init_point key
+        init_point:      process.env.NODE_ENV === 'production' ? mp.init_point : mp.sandbox_init_point,
       });
     }
 
-    return badRequest('Acción no válida');
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return badRequest('Datos inválidos', error.errors);
-    }
-    return serverError(error);
+    return badRequest('Acción no válida. Use: webpay-init, webpay-commit, mp-preference');
+  } catch (err: any) {
+    if (err.code === 404) return NextResponse.json({ error: err.message }, { status: 404 });
+    if (err.code === 400) return NextResponse.json({ error: err.message }, { status: 400 });
+    if (err instanceof z.ZodError) return badRequest('Datos inválidos', err.errors);
+    console.error('[Payments] Error:', err);
+    return serverError(err);
   }
 }
 
-// ---- MercadoPago Webhook ----
+// ── GET: MercadoPago Webhook ──────────────────────────────────────
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const type = searchParams.get('type');
-    const dataId = searchParams.get('data.id');
+    const type   = searchParams.get('type');
+    const dataId = searchParams.get('data.id') || searchParams.get('id');
 
-    if (type === 'payment' && dataId) {
-      const res = await fetch(`https://api.mercadopago.com/v1/payments/${dataId}`, {
+    if (type === 'payment' && dataId && process.env.MERCADOPAGO_ACCESS_TOKEN) {
+      const res  = await fetch(`https://api.mercadopago.com/v1/payments/${dataId}`, {
         headers: { Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}` },
       });
       const mpPayment = await res.json();
 
-      if (mpPayment.status === 'approved') {
+      if (mpPayment.external_reference) {
         const payment = await prisma.payment.findFirst({
-          where: { externalId: mpPayment.preference_id },
+          where: { order: { orderNumber: mpPayment.external_reference } },
         });
-        if (payment) {
-          await prisma.payment.update({
-            where: { id: payment.id },
-            data: { status: 'PAID', paidAt: new Date(), responseData: mpPayment },
-          });
-          await prisma.order.update({
-            where: { id: payment.orderId },
-            data: { status: 'CONFIRMED', paymentStatus: 'PAID' },
-          });
+        if (payment && mpPayment.status === 'approved') {
+          await prisma.$transaction([
+            prisma.payment.update({
+              where: { id: payment.id },
+              data: { status: 'PAID', paidAt: new Date(), responseData: mpPayment },
+            }),
+            prisma.order.update({
+              where: { id: payment.orderId },
+              data: { status: 'CONFIRMED', paymentStatus: 'PAID' },
+            }),
+          ]);
         }
       }
     }
 
     return ok({ received: true });
-  } catch (error) {
-    return serverError(error);
+  } catch (err) {
+    return serverError(err);
   }
 }

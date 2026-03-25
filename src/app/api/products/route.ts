@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
         include: {
           category: { select: { name: true, slug: true } },
           brand: { select: { name: true, slug: true } },
-          images: { take: 2, orderBy: { position: 'asc' } },
+          images: { take: 2, orderBy: { sortOrder: 'asc' } },
           inventory: { select: { stock: true } },
         },
       }),
