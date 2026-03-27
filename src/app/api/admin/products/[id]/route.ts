@@ -22,6 +22,8 @@ const UpdateSchema = z.object({
   stock:             z.number().int().min(0).optional(),
   lowStockThreshold: z.number().int().min(0).optional(),
   trackStock:        z.boolean().optional(),
+  imageUrl:          z.string().url().nullable().optional(),
+  imageUrls:         z.array(z.string().url()).optional(),
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
@@ -30,10 +32,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   try {
     const data = UpdateSchema.parse(await req.json());
-    const { stock, lowStockThreshold, trackStock, ...productData } = data;
+    const { stock, lowStockThreshold, trackStock, imageUrls, ...productData } = data;
 
     const updated = await prisma.$transaction(async (tx: any) => {
       const p = await tx.product.update({ where: { id: params.id }, data: productData });
+
       if (stock !== undefined || lowStockThreshold !== undefined || trackStock !== undefined) {
         await tx.inventory.upsert({
           where: { productId: params.id },
@@ -42,9 +45,26 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
             ...(lowStockThreshold !== undefined && { lowStockThreshold }),
             ...(trackStock !== undefined && { trackStock }),
           },
-          create: { productId: params.id, stock: stock ?? 0, lowStockThreshold: lowStockThreshold ?? 5, trackStock: trackStock ?? true },
+          create: {
+            productId: params.id, stock: stock ?? 0,
+            lowStockThreshold: lowStockThreshold ?? 5, trackStock: trackStock ?? true,
+          },
         });
       }
+
+      // If imageUrls passed, add new ones (don't delete existing)
+      if (imageUrls?.length) {
+        const existing = await tx.productImage.count({ where: { productId: params.id } });
+        for (let i = 0; i < imageUrls.length; i++) {
+          await tx.productImage.create({
+            data: {
+              productId: params.id, url: imageUrls[i],
+              isMain: existing === 0 && i === 0, sortOrder: existing + i,
+            },
+          });
+        }
+      }
+
       return p;
     });
 
@@ -58,13 +78,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const { user, error } = await withAdmin(req);
   if (error) return error;
-
   try {
     const p = await prisma.product.findUnique({ where: { id: params.id } });
     if (!p) return notFound('Producto no encontrado');
     await prisma.product.delete({ where: { id: params.id } });
     return ok({ deleted: true });
-  } catch (e) {
-    return serverError(e);
-  }
+  } catch (e) { return serverError(e); }
 }

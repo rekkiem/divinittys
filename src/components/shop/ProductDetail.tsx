@@ -23,6 +23,7 @@ type Product = {
   comparePrice?: PriceLike | null;
   isOnSale?: boolean;
   isFeatured?: boolean;
+  imageUrl?: string | null;
   images: { id: string; url: string; alt?: string | null; isMain: boolean }[];
   brand?: { id: string; name: string; slug: string } | null;
   category?: { id: string; name: string; slug: string; parent?: { name: string; slug: string } | null } | null;

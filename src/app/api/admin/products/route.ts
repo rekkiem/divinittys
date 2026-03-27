@@ -24,6 +24,9 @@ const ProductSchema = z.object({
   stock:             z.number().int().min(0).default(0),
   lowStockThreshold: z.number().int().min(0).default(5),
   trackStock:        z.boolean().default(true),
+  // MinIO image fields
+  imageUrl:          z.string().url().nullable().optional(),
+  imageUrls:         z.array(z.string().url()).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -53,14 +56,30 @@ export async function POST(req: NextRequest) {
           costPrice: data.costPrice, isActive: data.isActive,
           isFeatured: data.isFeatured, isOnSale: data.isOnSale,
           tags: data.tags, weight: data.weight,
+          imageUrl: data.imageUrl ?? null,
         },
       });
+
       await tx.inventory.create({
         data: {
           productId: p.id, stock: data.stock,
           lowStockThreshold: data.lowStockThreshold, trackStock: data.trackStock,
         },
       });
+
+      // Persist uploaded image URLs as ProductImage records
+      const urls = data.imageUrls?.length ? data.imageUrls : data.imageUrl ? [data.imageUrl] : [];
+      for (let i = 0; i < urls.length; i++) {
+        await tx.productImage.create({
+          data: {
+            productId: p.id,
+            url:       urls[i],
+            isMain:    i === 0,
+            sortOrder: i,
+          },
+        });
+      }
+
       return p;
     });
 
