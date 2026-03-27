@@ -23,6 +23,7 @@ type ProductCardProps = {
     isOnSale?: boolean;
     isFeatured?: boolean;
     images: { url: string; alt?: string | null }[];
+    imageUrl?: string | null;
     brand?: { name: string } | null;
     inventory?: { stock: number } | null;
     category?: { name: string; slug: string } | null;
@@ -42,7 +43,7 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
   const discount = comparePrice ? calculateDiscount(price, comparePrice) : 0;
   const inWishlist = hydrated ? isInWishlist(product.id) : false;
   const inStock = !product.inventory || product.inventory.stock > 0;
-  const imageUrl = product.images?.[0]?.url || '/placeholder-product.svg';
+  const imageUrl = product.images?.[0]?.url || product.imageUrl || '/placeholder-product.svg';
 
   useEffect(() => {
     setHydrated(true);

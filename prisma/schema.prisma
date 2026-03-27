@@ -134,6 +134,7 @@ model Product {
   isFeatured      Boolean          @default(false)
   isOnSale        Boolean          @default(false)
   tags            String[]
+  imageUrl        String?          // Primary image URL (MinIO)
   weight          Decimal?         @db.Decimal(8, 3)
   dimensions      Json?
   images          ProductImage[]
