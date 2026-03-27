@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import ImageUploader from '@/components/admin/ImageUploader';
 import { Loader2, Save, ArrowLeft, Plus, Trash2, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { slugify } from '@/lib/utils/api';
@@ -9,6 +10,8 @@ import { useAuthStore } from '@/hooks/useAuth';
 
 type Category = { id: string; name: string; slug: string };
 type Brand    = { id: string; name: string; slug: string };
+
+type ImagePayload = { url: string; isMain: boolean; id?: string };
 
 type ProductFormProps = {
   categories: Category[];
@@ -21,6 +24,7 @@ type ProductFormProps = {
     isActive: boolean; isFeatured: boolean; isOnSale: boolean;
     tags: string[]; weight: number | null;
     inventory: { stock: number; lowStockThreshold: number; trackStock: boolean } | null;
+    images?: ImagePayload[];
   };
 };
 
@@ -33,6 +37,7 @@ export default function ProductForm({ categories, brands, initialData }: Product
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState('');
+  const [images, setImages] = useState<ImagePayload[]>(initialData?.images ?? []);
   const [form, setForm] = useState({
     sku:               initialData?.sku ?? '',
     name:              initialData?.name ?? '',
@@ -82,7 +87,10 @@ export default function ProductForm({ categories, brands, initialData }: Product
 
     setLoading(true);
     try {
-      const payload = {
+      const imageUrls = images.map(i => i.url).filter(Boolean);
+      const mainImage = images.find(i => i.isMain)?.url || imageUrls[0] || null;
+
+      const payload: any = {
         sku:               form.sku || `SKU-${Date.now()}`,
         name:              form.name,
         slug:              form.slug || slugify(form.name),
@@ -101,6 +109,8 @@ export default function ProductForm({ categories, brands, initialData }: Product
         stock:             parseInt(form.stock) || 0,
         lowStockThreshold: parseInt(form.lowStockThreshold) || 5,
         trackStock:        form.trackStock,
+        imageUrl:         mainImage,
+        imageUrls,
       };
 
       // FIX: correct URL with template literal + correct method per action
@@ -255,6 +265,18 @@ export default function ProductForm({ categories, brands, initialData }: Product
                   min="0" step="1" placeholder="5000" className={fieldCls} />
               </div>
             </div>
+          </div>
+
+          {/* Images */}
+          <div className="bg-card rounded-2xl border border-border p-6 space-y-4">
+            <h2 className="font-sans font-semibold text-charcoal-700">Imágenes</h2>
+            <ImageUploader
+              productId={isEdit ? initialData?.id : undefined}
+              initialImages={images}
+              onImagesChange={(next) => setImages(next)}
+              maxImages={8}
+            />
+            <p className="text-xs text-charcoal-400">Selecciona al menos una imagen. La primera será la imagen principal.</p>
           </div>
 
           {/* Stock */}
