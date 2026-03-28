@@ -2,10 +2,8 @@
  * src/lib/admin-auth.ts
  * Centralized admin authorization middleware.
  *
- * DESIGN: Always verifies role from DATABASE (not JWT) to ensure:
- * - Role promotions take effect immediately
- * - Role revocations take effect immediately
- * - No stale JWT role mismatches cause 403 false-positives
+ * DESIGN: Always verifies role from DATABASE (not JWT) to ensure role changes
+ * take effect immediately. Never trusts JWT role field alone.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getTokenFromRequest, verifyAccessToken, getAuthUser } from './auth';
@@ -21,23 +19,16 @@ export type AdminUser = {
   avatar: string | null;
 };
 
-/**
- * requireAdmin: verify request comes from an active admin user.
- *
- * Flow:
- * 1. Validate token exists + is cryptographically valid
- * 2. Fetch user from DB (source of truth for role)
- * 3. Check DB role is ADMIN or SUPER_ADMIN
- *
- * NOTE: We do NOT check JWT role in step 1. This prevents false-403s
- * when a user's DB role was changed after their last login.
- */
 export async function requireAdmin(req: NextRequest): Promise<AdminUser | NextResponse> {
   const token = getTokenFromRequest(req);
 
   if (!token) {
     return NextResponse.json(
-      { error: 'No autorizado', hint: 'Inicia sesión en /cuenta/login' },
+      {
+        error: 'No autorizado — sesión no encontrada',
+        hint: 'Cierra sesión y vuelve a iniciar en /cuenta/login',
+        code: 'NO_TOKEN',
+      },
       { status: 401 }
     );
   }
@@ -45,16 +36,25 @@ export async function requireAdmin(req: NextRequest): Promise<AdminUser | NextRe
   const jwtPayload = await verifyAccessToken(token);
   if (!jwtPayload) {
     return NextResponse.json(
-      { error: 'Token inválido o expirado', hint: 'Inicia sesión nuevamente' },
+      {
+        error: 'Sesión expirada o inválida',
+        hint: 'Cierra sesión y vuelve a iniciar en /cuenta/login',
+        code: 'INVALID_TOKEN',
+      },
       { status: 401 }
     );
   }
 
-  // Always check role from DB — never trust JWT role for authorization
+  // Always verify from DB (source of truth)
   const user = await getAuthUser(req);
   if (!user) {
     return NextResponse.json(
-      { error: 'Usuario no encontrado o inactivo' },
+      {
+        error: 'Usuario no encontrado o inactivo',
+        hint: 'La sesión puede estar desactualizada. Cierra sesión, limpia el caché del navegador y vuelve a iniciar sesión. Si el problema persiste ejecuta: curl -X POST http://localhost:3000/api/admin/fix-seed',
+        code: 'USER_NOT_FOUND',
+        userId: jwtPayload.userId,  // helps debug which user is failing
+      },
       { status: 403 }
     );
   }
@@ -65,7 +65,8 @@ export async function requireAdmin(req: NextRequest): Promise<AdminUser | NextRe
         error: 'Acceso denegado — rol insuficiente',
         required: ADMIN_ROLES,
         got: user.role,
-        hint: 'Si eres administrador, cierra sesión y vuelve a iniciar para actualizar tu token',
+        hint: 'Cierra sesión y vuelve a iniciar sesión para actualizar el token',
+        code: 'INSUFFICIENT_ROLE',
       },
       { status: 403 }
     );
