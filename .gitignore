@@ -37,3 +37,11 @@ prisma/migrations/*.sql.bak
 # Build artifacts
 dist/
 *.tsbuildinfo
+
+# ── IMPORTANT: Lock files MUST be committed ──────────────────────
+# package-lock.json IS tracked (do NOT add it here)
+# It is required for:
+#   - npm ci in CI/CD (GitHub Actions setup-node@v4 cache)
+#   - Reproducible installs across environments
+#   - Security audits (npm audit)
+# ─────────────────────────────────────────────────────────────────
