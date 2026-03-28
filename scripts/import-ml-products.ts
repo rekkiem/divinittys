@@ -152,7 +152,7 @@ function parseExcel(filePath: string): ParsedProduct[] {
     const price = typeof priceRaw === 'number' ? priceRaw : parseFloat(String(priceRaw).replace(/[^0-9.]/g, '')) || 0;
     const qty   = typeof row.QUANTITY === 'number' ? row.QUANTITY : parseInt(String(row.QUANTITY)) || 0;
     const status = String(row.STATUS || 'Activa').trim().toLowerCase();
-    const isActive = ['activa', 'active', ''].includes(status);
+    const isActive = !status || ['activa', 'active', ''].includes(status);
 
     const variation = String(row.VARIATIONS || '').trim();
     const hasVariation = variation && variation !== '-' && variation !== '0';

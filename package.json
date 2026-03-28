@@ -31,7 +31,8 @@
     "import:ml": "npx tsx scripts/import-ml-products.ts",
     "import:ml:dry": "npx tsx scripts/import-ml-products.ts --dry-run",
     "migrate:images": "npx tsx scripts/migrateImages.ts",
-    "minio:setup": "npx tsx scripts/setupMinio.ts"
+    "minio:setup": "npx tsx scripts/setupMinio.ts",
+    "fix:deploy": "npx tsx scripts/fixDeploy.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.600.0",

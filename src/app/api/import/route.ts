@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
               data: {
                 basePrice: row.precio,
                 comparePrice: row.precio_comparar || null,
-                isActive: row.activo !== 'N' && row.activo !== 'NO' && row.activo !== '0',
+                isActive: !row.activo || (row.activo !== 'N' && row.activo !== 'NO' && row.activo !== '0' && row.activo !== 'false'),
               },
             });
 
@@ -173,7 +173,7 @@ export async function POST(req: NextRequest) {
             basePrice: price,
             comparePrice: priceRow?.precio_comparar || null,
             weight: row.peso ? Number(row.peso) : null,
-            isActive: priceRow?.activo !== 'N' && priceRow?.activo !== 'NO',
+            isActive: !priceRow?.activo || (priceRow?.activo !== 'N' && priceRow?.activo !== 'NO' && priceRow?.activo !== '0'),
           },
           create: {
             sku,
