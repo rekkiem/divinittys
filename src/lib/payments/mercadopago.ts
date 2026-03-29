@@ -3,7 +3,9 @@
  * Docs: https://www.mercadopago.cl/developers
  */
 
-const MP_ACCESS_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN || '';
+import { env } from '@/lib/env';
+
+const MP_ACCESS_TOKEN = env.MERCADOPAGO_ACCESS_TOKEN || '';
 const MP_BASE_URL = 'https://api.mercadopago.com';
 
 const mpHeaders = {
