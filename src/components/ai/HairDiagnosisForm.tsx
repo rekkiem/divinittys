@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, ArrowLeft, Sparkles, Loader2, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
 import { formatCLP } from '@/lib/utils/api';
+import { normalizeImageUrl } from '@/lib/images';
 
 const STEPS = [
   {
@@ -135,8 +136,8 @@ export default function HairDiagnosisForm() {
                 <Link key={p.id} href={`/productos/${p.slug}`}>
                   <div className="group p-4 rounded-2xl border border-champagne-200 hover:border-primary-300 hover:shadow-md transition-all">
                     <div className="aspect-square rounded-xl bg-champagne-100 overflow-hidden mb-3">
-                      {p.images[0]?.url ? (
-                        <img src={p.images[0].url} alt={p.name} className="w-full h-full object-cover" />
+                      {normalizeImageUrl(p.images[0]?.url) ? (
+                        <img src={normalizeImageUrl(p.images[0]?.url)!} alt={p.name} className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <span className="font-display text-3xl text-primary-300">D</span>

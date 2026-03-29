@@ -9,6 +9,7 @@
  * ✅ Delegates interactivity to SortSelector (Client) + ProductsPagination (Client)
  */
 import { prisma } from '@/lib/prisma';
+import { serializeForClient } from '@/lib/serialization';
 import ProductCard from './ProductCard';
 import ProductsPagination from './ProductsPagination';
 import SortSelector from './SortSelector';
@@ -81,6 +82,7 @@ export default async function ProductsGrid({
   ]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
+  const safeProducts = serializeForClient(products);
 
   if (!products.length) {
     return (
@@ -107,7 +109,7 @@ export default async function ProductsGrid({
 
       {/* Product grid */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        {products.map((product: any, i: number) => (
+        {safeProducts.map((product: any, i: number) => (
           <ProductCard key={product.id} product={product} index={i} />
         ))}
       </div>

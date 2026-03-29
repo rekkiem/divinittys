@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { getAuthUser } from '@/lib/auth';
 import { ok, created, badRequest, unauthorized, serverError, generateOrderNumber } from '@/lib/utils/api';
+import { sanitizeEmail, sanitizeMultilineText, sanitizeText } from '@/lib/security/sanitize';
+import { logger } from '@/lib/logger';
 
 const createOrderSchema = z.object({
   items: z.array(z.object({
@@ -11,20 +13,20 @@ const createOrderSchema = z.object({
     quantity: z.number().min(1),
   })).min(1),
   shippingData: z.object({
-    firstName: z.string(),
-    lastName: z.string(),
-    street: z.string(),
-    number: z.string(),
-    apartment: z.string().optional(),
-    commune: z.string(),
-    city: z.string(),
-    region: z.string(),
-    phone: z.string(),
-    email: z.string().email(),
+    firstName: z.string().min(1).transform(sanitizeText),
+    lastName: z.string().min(1).transform(sanitizeText),
+    street: z.string().min(1).transform(sanitizeText),
+    number: z.string().min(1).transform(sanitizeText),
+    apartment: z.string().optional().transform((value) => (value ? sanitizeText(value) : undefined)),
+    commune: z.string().min(1).transform(sanitizeText),
+    city: z.string().min(1).transform(sanitizeText),
+    region: z.string().min(1).transform(sanitizeText),
+    phone: z.string().min(1).transform(sanitizeText),
+    email: z.string().email().transform(sanitizeEmail),
   }),
-  couponCode: z.string().optional(),
-  shippingService: z.string().optional(),
-  notes: z.string().optional(),
+  couponCode: z.string().optional().transform((value) => (value ? sanitizeText(value).toUpperCase() : undefined)),
+  shippingService: z.string().optional().transform((value) => (value ? sanitizeText(value) : undefined)),
+  notes: z.string().max(1000).optional().transform((value) => (value ? sanitizeMultilineText(value) : undefined)),
 });
 
 export async function GET(req: NextRequest) {
@@ -177,11 +179,10 @@ export async function POST(req: NextRequest) {
       // Reserve stock
       for (const item of data.items) {
         if (item.variantId) {
-          await tx.productVariant.update({
-            where: { id: item.variantId },
-            data: { stock: { decrement: item.quantity } },
-          });
-        } else {
+          continue;
+        }
+
+        if (products.find((product: any) => product.id === item.productId)?.inventory?.trackStock) {
           await tx.inventory.updateMany({
             where: { productId: item.productId },
             data: { reservedStock: { increment: item.quantity } },
@@ -200,6 +201,7 @@ export async function POST(req: NextRequest) {
       return newOrder;
     });
 
+    logger.info('order.created', { orderId: order.id, orderNumber: order.orderNumber, userId: user?.id ?? null });
     return created({ order });
   } catch (error) {
     if (error instanceof z.ZodError) {

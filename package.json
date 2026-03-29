@@ -30,6 +30,7 @@
     "test:all": "vitest run && playwright test",
     "import:ml": "npx tsx scripts/import-ml-products.ts",
     "import:ml:dry": "npx tsx scripts/import-ml-products.ts --dry-run",
+    "import:images": "npx tsx scripts/import-product-images.ts",
     "migrate:images": "npx tsx scripts/migrateImages.ts",
     "minio:setup": "npx tsx scripts/setupMinio.ts",
     "fix:deploy": "npx tsx scripts/fixDeploy.ts"

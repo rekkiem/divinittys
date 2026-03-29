@@ -12,15 +12,18 @@ import {
   verifyAccessToken,
 } from '@/lib/auth';
 import { ok, badRequest, unauthorized, serverError, conflict } from '@/lib/utils/api';
+import { rateLimit } from '@/lib/security/rate-limit';
+import { sanitizeEmail, sanitizeText } from '@/lib/security/sanitize';
+import { logger } from '@/lib/logger';
 
 // ---- Register ----
 const registerSchema = z.object({
-  name: z.string().min(2).max(100),
-  email: z.string().email(),
+  name: z.string().min(2).max(100).transform(sanitizeText),
+  email: z.string().email().transform(sanitizeEmail),
   password: z.string().min(8).regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
     message: 'La contraseña debe tener al menos una mayúscula, una minúscula y un número',
   }),
-  phone: z.string().optional(),
+  phone: z.string().optional().transform((value) => (value ? sanitizeText(value) : undefined)),
 });
 
 export async function POST(req: NextRequest) {
@@ -29,6 +32,9 @@ export async function POST(req: NextRequest) {
 
   try {
     if (action === 'register') {
+      const registrationLimit = rateLimit(req, { key: 'auth:register', limit: 5, windowMs: 15 * 60 * 1000 });
+      if (!registrationLimit.allowed) return NextResponse.json({ success: false, error: 'Demasiados intentos. Intenta nuevamente más tarde.' }, { status: 429 });
+
       const body = await req.json();
       const data = registerSchema.parse(body);
 
@@ -65,13 +71,16 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'login') {
+      const loginLimit = rateLimit(req, { key: 'auth:login', limit: 10, windowMs: 15 * 60 * 1000 });
+      if (!loginLimit.allowed) return NextResponse.json({ success: false, error: 'Demasiados intentos. Intenta nuevamente más tarde.' }, { status: 429 });
+
       const body = await req.json();
       const { email, password } = z.object({
-        email: z.string().email(),
+        email: z.string().email().transform(sanitizeEmail),
         password: z.string(),
       }).parse(body);
 
-      const user = await prisma.user.findUnique({ where: { email, isActive: true } });
+      const user = await prisma.user.findFirst({ where: { email, isActive: true } });
       if (!user) return unauthorized('Credenciales inválidas');
 
       const valid = await bcrypt.compare(password, user.passwordHash);
@@ -94,6 +103,7 @@ export async function POST(req: NextRequest) {
       const userData = { id: user.id, email: user.email, name: user.name, role: user.role, avatar: user.avatar };
       const res = ok({ user: userData, accessToken });
       setAuthCookies(res as NextResponse, accessToken, refreshToken);
+      logger.info('auth.login', { userId: user.id, email: user.email });
       return res;
     }
 
@@ -144,7 +154,7 @@ export async function POST(req: NextRequest) {
       const payload = await verifyAccessToken(token);
       if (!payload) return unauthorized();
 
-      const user = await prisma.user.findUnique({
+      const user = await prisma.user.findFirst({
         where: { id: payload.userId, isActive: true },
         select: { id: true, email: true, name: true, role: true, avatar: true, phone: true },
       });
