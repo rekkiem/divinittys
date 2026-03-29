@@ -11,17 +11,22 @@ import {
   IntegrationCommerceCodes,
   IntegrationApiKeys,
 } from 'transbank-sdk';
+import { env } from '@/lib/env';
 
 // ── Configuration ──────────────────────────────────────────────────────────
 
-const isProduction = process.env.TRANSBANK_ENV === 'production';
+const isProduction = env.TRANSBANK_ENV === 'production';
+
+function normalizeBuyOrder(buyOrder: string) {
+  return buyOrder.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 26);
+}
 
 function getTransaction(): InstanceType<typeof WebpayPlus.Transaction> {
   if (isProduction) {
     // Production credentials from env
     const opts = new Options(
-      process.env.TRANSBANK_COMMERCE_CODE!,
-      process.env.TRANSBANK_API_KEY!,
+      env.TRANSBANK_COMMERCE_CODE!,
+      env.TRANSBANK_API_KEY!,
       Environment.Production
     );
     return new WebpayPlus.Transaction(opts);
@@ -70,9 +75,14 @@ export type WebpayCommitResponse = {
 export async function createWebpayTransaction(
   params: WebpayCreateParams
 ): Promise<WebpayCreateResponse> {
+  const buyOrder = normalizeBuyOrder(params.buyOrder);
+  if (!buyOrder || buyOrder.length > 26) {
+    throw new Error('Invalid Webpay buyOrder');
+  }
+
   const tx = getTransaction();
   const response = await tx.create(
-    params.buyOrder,
+    buyOrder,
     params.sessionId,
     params.amount,
     params.returnUrl
@@ -101,3 +111,5 @@ export async function refundWebpayTransaction(
   const tx = getTransaction();
   return tx.refund(token, amount) as Promise<{ type: string; balance?: number }>;
 }
+
+export { normalizeBuyOrder };
