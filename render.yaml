@@ -46,14 +46,16 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: TRANSBANK_COMMERCE_CODE
-        value: "597055555532"
+        sync: false
       - key: TRANSBANK_API_KEY
-        value: "579B532A7440BB0C9079DED94D31EA1615BACEB56610332264630D42D0A36B1C"
+        sync: false
       - key: TRANSBANK_ENV
-        value: integration
+        sync: false
       - key: MERCADOPAGO_ACCESS_TOKEN
         sync: false
       - key: MERCADOPAGO_PUBLIC_KEY
+        sync: false
+      - key: MERCADOPAGO_WEBHOOK_SECRET
         sync: false
       - key: MINIO_ENDPOINT
         sync: false  # Use Cloudflare R2 endpoint in production

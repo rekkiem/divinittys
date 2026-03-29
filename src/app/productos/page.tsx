@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import { prisma } from '@/lib/prisma';
+import { serializeForClient } from '@/lib/serialization';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import ProductsGrid from '@/components/shop/ProductsGrid';
@@ -43,6 +44,7 @@ export default async function ProductsPage({
   searchParams: { [key: string]: string | undefined };
 }) {
   const filtersData = await getFiltersData();
+  const safeFiltersData = serializeForClient(filtersData);
 
   return (
     <div className="min-h-screen bg-background">
@@ -73,10 +75,10 @@ export default async function ProductsPage({
             {/* Sidebar Filters */}
             <aside className="lg:w-64 shrink-0">
               <ProductsFilters
-                categories={filtersData.categories}
-                brands={filtersData.brands}
-                minPrice={filtersData.minPrice}
-                maxPrice={filtersData.maxPrice}
+                categories={safeFiltersData.categories}
+                brands={safeFiltersData.brands}
+                minPrice={safeFiltersData.minPrice}
+                maxPrice={safeFiltersData.maxPrice}
                 searchParams={searchParams}
               />
             </aside>

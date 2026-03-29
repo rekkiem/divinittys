@@ -8,6 +8,7 @@ import { motion } from 'framer-motion';
 import { useCartStore } from '@/hooks/useCart';
 import { useWishlistStore } from '@/hooks/useWishlist';
 import { formatCLP, calculateDiscount } from '@/lib/utils/api';
+import { normalizeImageUrl } from '@/lib/images';
 import toast from 'react-hot-toast';
 
 type PriceLike = number | string | { toString: () => string };
@@ -41,6 +42,7 @@ const TRUST_BADGES = [
 
 export default function ProductDetail({ product }: { product: Product }) {
   const [selectedImage, setSelectedImage] = useState(0);
+  const [imageErrors, setImageErrors] = useState<Record<number, boolean>>({});
   const [hydrated, setHydrated] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState<string | null>(
     product.variants.length === 1 ? product.variants[0].id : null
@@ -64,6 +66,9 @@ export default function ProductDetail({ product }: { product: Product }) {
     () => new Intl.DateTimeFormat('es-CL', { timeZone: 'UTC' }),
     []
   );
+  const selectedImageUrl = imageErrors[selectedImage]
+    ? null
+    : (normalizeImageUrl(product.images[selectedImage]?.url || product.imageUrl) || null);
 
   useEffect(() => {
     setHydrated(true);
@@ -74,7 +79,7 @@ export default function ProductDetail({ product }: { product: Product }) {
       id: product.id,
       name: product.name,
       price,
-      image: product.images.find((i) => i.isMain)?.url || product.images[0]?.url,
+      image: normalizeImageUrl(product.images.find((i) => i.isMain)?.url || product.images[0]?.url) || undefined,
       slug: product.slug,
       quantity,
     });
@@ -110,13 +115,16 @@ export default function ProductDetail({ product }: { product: Product }) {
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3 }}
           >
-            {product.images[selectedImage]?.url ? (
+            {selectedImageUrl ? (
               <Image
-                src={product.images[selectedImage].url}
+                src={selectedImageUrl}
                 alt={product.images[selectedImage].alt || product.name}
                 fill
                 className="object-cover"
                 priority
+                onError={() => {
+                  setImageErrors((current) => ({ ...current, [selectedImage]: true }));
+                }}
               />
             ) : (
               <div className="absolute inset-0 bg-champagne-gradient flex items-center justify-center">
@@ -143,7 +151,16 @@ export default function ProductDetail({ product }: { product: Product }) {
                   }`}
                 >
                   {img.url ? (
-                    <Image src={img.url} alt="" width={64} height={64} className="object-cover w-full h-full" />
+                    <Image
+                      src={imageErrors[i] ? '/placeholder-product.svg' : (normalizeImageUrl(img.url) || '/placeholder-product.svg')}
+                      alt=""
+                      width={64}
+                      height={64}
+                      className="object-cover w-full h-full"
+                      onError={() => {
+                        setImageErrors((current) => ({ ...current, [i]: true }));
+                      }}
+                    />
                   ) : (
                     <div className="w-full h-full bg-champagne-200" />
                   )}
