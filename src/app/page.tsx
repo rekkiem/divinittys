@@ -2,6 +2,7 @@ import dynamic from 'next/dynamic';
 import { Suspense } from 'react';
 import { unstable_cache } from 'next/cache';
 import { prisma } from '@/lib/prisma';
+import { serializeForClient } from '@/lib/serialization';
 import HeroSection from '@/components/shop/HeroSection';
 import FeaturedCategories from '@/components/shop/FeaturedCategories';
 import FeaturedProducts from '@/components/shop/FeaturedProducts';
@@ -55,6 +56,8 @@ const getHomeData = unstable_cache(
 
 export default async function HomePage() {
   const { featuredProducts, categories, brands, onSaleProducts } = await getHomeData();
+  const safeFeaturedProducts = serializeForClient(featuredProducts);
+  const safeOnSaleProducts = serializeForClient(onSaleProducts);
 
   return (
     <div className="min-h-screen bg-background">
@@ -66,11 +69,11 @@ export default async function HomePage() {
         <FeaturedCategories categories={categories} />
 
         {onSaleProducts.length > 0 && (
-          <OffersBanner products={onSaleProducts} />
+          <OffersBanner products={safeOnSaleProducts} />
         )}
 
         <Suspense fallback={<div className="h-96 shimmer" />}>
-          <FeaturedProducts products={featuredProducts} title="Destacados" />
+          <FeaturedProducts products={safeFeaturedProducts} title="Destacados" />
         </Suspense>
 
         <BeautyAssistantBanner />
