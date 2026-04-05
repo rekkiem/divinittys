@@ -8,13 +8,12 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from './prisma';
-import { env } from './env';
 
 const JWT_SECRET = new TextEncoder().encode(
-  env.JWT_SECRET
+  process.env.JWT_SECRET || 'fallback_secret_change_in_production'
 );
 const JWT_REFRESH_SECRET = new TextEncoder().encode(
-  env.JWT_REFRESH_SECRET
+  process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret'
 );
 
 export type JWTPayload = {

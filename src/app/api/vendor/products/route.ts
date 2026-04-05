@@ -1,66 +1,77 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { created, ok, serverError, unauthorized } from '@/lib/utils/api';
+import { ok, created, badRequest, unauthorized, serverError } from '@/lib/utils/api';
 import { getAuthUser } from '@/lib/auth';
 import { slugify } from '@/lib/utils/api';
-import { enqueueProductIndex } from '@/lib/queue/search.queue';
 
-const createSchema = z.object({
-  sku: z.string().min(3),
-  name: z.string().min(3),
-  description: z.string().optional(),
-  categoryId: z.string(),
-  brandId: z.string().optional(),
-  basePrice: z.coerce.number().positive(),
-});
-
-async function getVendor(userId: string) {
-  return prisma.vendor.findUnique({ where: { userId } });
+async function getVendorFromRequest(req: NextRequest) {
+  const user = await getAuthUser(req);
+  if (!user) return null;
+  return prisma.vendor.findUnique({ where: { userId: user.id } });
 }
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await getAuthUser(req);
-    if (!user) return unauthorized();
-    const vendor = await getVendor(user.id);
-    if (!vendor) return unauthorized('Vendor no registrado');
+    const vendor = await getVendorFromRequest(req);
+    if (!vendor) return unauthorized('Debes ser un vendedor registrado');
 
     const products = await prisma.product.findMany({
-      where: { vendorId: vendor.id },
+      where:   { vendorId: vendor.id },
+      include: { inventory: { select: { stock: true } }, images: { where: { isMain: true }, take: 1 } },
       orderBy: { createdAt: 'desc' },
-      include: { images: true, inventory: true },
     });
 
-    return ok(products);
-  } catch (error) {
-    return serverError(error);
+    return ok({ products });
+  } catch (e) {
+    return serverError(e);
   }
 }
 
+const ProductSchema = z.object({
+  name:        z.string().min(2),
+  description: z.string().optional(),
+  basePrice:   z.number().positive(),
+  comparePrice: z.number().positive().optional(),
+  categoryId:  z.string().min(1),
+  stock:       z.number().int().min(0).default(0),
+  tags:        z.array(z.string()).default([]),
+  sku:         z.string().optional(),
+});
+
 export async function POST(req: NextRequest) {
   try {
-    const user = await getAuthUser(req);
-    if (!user) return unauthorized();
-    const vendor = await getVendor(user.id);
-    if (!vendor) return unauthorized('Vendor no registrado');
+    const vendor = await getVendorFromRequest(req);
+    if (!vendor) return unauthorized('Debes ser un vendedor registrado');
 
-    const parsed = createSchema.safeParse(await req.json());
-    if (!parsed.success) return unauthorized('Datos inválidos');
+    const data = ProductSchema.parse(await req.json());
+    const slug = slugify(data.name);
+    const sku  = data.sku || `VND-${vendor.id.slice(0,6)}-${Date.now()}`;
 
-    const product = await prisma.product.create({
-      data: {
-        ...parsed.data,
-        slug: slugify(parsed.data.name),
-        tags: [],
-        vendorId: vendor.id,
-        vendorSku: parsed.data.sku,
-      },
+    const product = await prisma.$transaction(async (tx: any) => {
+      const p = await tx.product.create({
+        data: {
+          name:        data.name,
+          slug,
+          sku,
+          description: data.description,
+          basePrice:   data.basePrice,
+          comparePrice: data.comparePrice,
+          categoryId:  data.categoryId,
+          vendorId:    vendor.id,
+          tags:        data.tags,
+          isActive:    false,  // Vendor products start inactive, admin must approve
+        },
+      });
+      await tx.inventory.create({
+        data: { productId: p.id, stock: data.stock, lowStockThreshold: 5, trackStock: true },
+      });
+      return p;
     });
 
-    await enqueueProductIndex(product.id);
-    return created(product);
-  } catch (error) {
-    return serverError(error);
+    return created({ product });
+  } catch (e) {
+    if (e instanceof z.ZodError) return badRequest('Datos inválidos', e.errors);
+    return serverError(e);
   }
 }

@@ -146,13 +146,11 @@ services:
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-divinittys_secret_2024}
       MINIO_BUCKET: divinittys-products
       RUNNING_IN_DOCKER: "true"
-      PORT: "80"
-      HOSTNAME: "0.0.0.0"
     volumes:
       - .:/app
       - /app/node_modules
     ports:
-      - "${PORT_APP:-3000}:80"
+      - "${PORT_APP:-3000}:3000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -173,7 +171,7 @@ services:
         echo '🔍 Indexando en Meilisearch (background)...' &&
         (sleep 10 && npx tsx scripts/reindex-search.ts) &
         echo '🚀 Iniciando servidor...' &&
-        npm run dev -- --hostname 0.0.0.0 --port 80
+        npm run dev
       "
     networks:
       - divinittys_net

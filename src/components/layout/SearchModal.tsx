@@ -7,7 +7,6 @@ import Image from 'next/image';
 import { Search, X, Loader2, TrendingUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatCLP } from '@/lib/utils/api';
-import { normalizeImageUrl } from '@/lib/images';
 
 type SearchResult = {
   id: string;
@@ -162,8 +161,8 @@ export default function SearchModal({ open, onClose }: { open: boolean; onClose:
                       className="flex items-center gap-4 p-3 rounded-xl hover:bg-champagne-50 transition-colors group"
                     >
                       <div className="w-14 h-14 rounded-xl bg-champagne-100 overflow-hidden shrink-0">
-                        {normalizeImageUrl(product.images[0]?.url) ? (
-                          <Image src={normalizeImageUrl(product.images[0]?.url)!} alt={product.name} width={56} height={56} className="w-full h-full object-cover" />
+                        {product.images[0]?.url ? (
+                          <Image src={product.images[0].url} alt={product.name} width={56} height={56} className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center">
                             <span className="font-display text-xl text-primary-300">D</span>

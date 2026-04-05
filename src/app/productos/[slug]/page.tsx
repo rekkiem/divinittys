@@ -1,7 +1,6 @@
 import { notFound } from 'next/navigation';
 import { Metadata } from 'next';
 import { prisma } from '@/lib/prisma';
-import { serializeForClient } from '@/lib/serialization';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import ProductDetail from '@/components/shop/ProductDetail';
@@ -59,18 +58,15 @@ export default async function ProductPage({ params }: { params: { slug: string }
     },
   });
 
-  const safeProduct = serializeForClient(product);
-  const safeRelated = serializeForClient(related);
-
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
       <main>
-        <ProductDetail product={safeProduct} />
+        <ProductDetail product={product} />
 
-        {safeRelated.length > 0 && (
+        {related.length > 0 && (
           <div className="border-t border-champagne-200 mt-16 pt-4">
-            <FeaturedProducts products={safeRelated} title="Productos Relacionados" />
+            <FeaturedProducts products={related} title="Productos Relacionados" />
           </div>
         )}
       </main>

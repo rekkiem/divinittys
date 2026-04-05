@@ -39,6 +39,12 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: { '@': path.resolve(__dirname, './src') },
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+      // Mock 'server-only' in test environment — this package is a no-op guard
+      // that prevents server modules from being imported on the client.
+      // Vitest runs in Node, so we mock it with an empty module.
+      'server-only': path.resolve(__dirname, 'src/__mocks__/server-only.ts'),
+    },
   },
 });

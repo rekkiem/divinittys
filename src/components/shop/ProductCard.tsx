@@ -9,7 +9,6 @@ import { motion } from 'framer-motion';
 import { useCartStore } from '@/hooks/useCart';
 import { useWishlistStore } from '@/hooks/useWishlist';
 import { formatCLP, calculateDiscount } from '@/lib/utils/api';
-import { normalizeImageUrl } from '@/lib/images';
 import toast from 'react-hot-toast';
 
 type PriceLike = number | string | { toString: () => string };
@@ -34,7 +33,6 @@ type ProductCardProps = {
 
 export default function ProductCard({ product, index = 0 }: ProductCardProps) {
   const [imageLoaded, setImageLoaded] = useState(false);
-  const [imageError, setImageError] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const router = useRouter();
   const { addItem } = useCartStore();
@@ -45,8 +43,7 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
   const discount = comparePrice ? calculateDiscount(price, comparePrice) : 0;
   const inWishlist = hydrated ? isInWishlist(product.id) : false;
   const inStock = !product.inventory || product.inventory.stock > 0;
-  const primaryImageUrl = normalizeImageUrl(product.images?.[0]?.url || product.imageUrl) || '/placeholder-product.svg';
-  const imageUrl = imageError ? '/placeholder-product.svg' : primaryImageUrl;
+  const imageUrl = product.images?.[0]?.url || product.imageUrl || '/placeholder-product.svg';
 
   useEffect(() => {
     setHydrated(true);
@@ -100,10 +97,6 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
                   imageLoaded ? 'opacity-100' : 'opacity-0'
                 }`}
                 onLoad={() => setImageLoaded(true)}
-                onError={() => {
-                  setImageError(true);
-                  setImageLoaded(true);
-                }}
               />
             ) : (
               <div className="absolute inset-0 bg-champagne-gradient flex items-center justify-center">
