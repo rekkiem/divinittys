@@ -1,30 +1,51 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { badRequest, created, serverError } from '@/lib/utils/api';
+import { ok, badRequest, conflict, serverError } from '@/lib/utils/api';
 
-const schema = z.object({
-  email: z.string().email(),
+const SubscribeSchema = z.object({
+  email:  z.string().email('Email inválido'),
+  name:   z.string().optional(),
   source: z.string().optional(),
 });
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const parsed = schema.safeParse(body);
-    if (!parsed.success) return badRequest('Email inválido');
+    const body = SubscribeSchema.parse(await req.json());
 
-    const sub = await prisma.subscriber.upsert({
-      where: { email: parsed.data.email.toLowerCase() },
-      create: {
-        email: parsed.data.email.toLowerCase(),
-        source: parsed.data.source || 'footer',
-      },
-      update: { status: 'ACTIVE' },
+    const existing = await prisma.subscriber.findUnique({ where: { email: body.email } });
+    if (existing) {
+      if (!existing.isActive) {
+        await prisma.subscriber.update({ where: { email: body.email }, data: { isActive: true } });
+        return ok({ message: 'Suscripción reactivada exitosamente' });
+      }
+      return conflict('Ya estás suscrito a nuestra newsletter');
+    }
+
+    await prisma.subscriber.create({
+      data: { email: body.email, name: body.name, source: body.source },
     });
 
-    return created({ id: sub.id, email: sub.email });
-  } catch (error) {
-    return serverError(error);
+    return ok({ message: '¡Gracias por suscribirte!' });
+  } catch (e) {
+    if (e instanceof z.ZodError) return badRequest('Email inválido', e.errors);
+    return serverError(e);
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const email = searchParams.get('email');
+    if (!email) return badRequest('Email requerido');
+
+    await prisma.subscriber.update({
+      where: { email },
+      data: { isActive: false },
+    });
+
+    return ok({ message: 'Desuscripción exitosa' });
+  } catch (e) {
+    return serverError(e);
   }
 }

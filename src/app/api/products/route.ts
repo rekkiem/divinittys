@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { ok, badRequest, serverError, paginate } from '@/lib/utils/api';
 import { searchProducts } from '@/lib/search/meilisearch';
-import { normalizeImageUrl } from '@/lib/images';
 
 // GET — public product listing with Meilisearch + SQL fallback
 export async function GET(req: NextRequest) {
@@ -25,11 +24,7 @@ export async function GET(req: NextRequest) {
       const meiliResult = await searchProducts({ q, page, limit, category, brand, minPrice, maxPrice, onSale, sort });
       if (meiliResult) {
         return ok({
-          products: meiliResult.hits.map((product) => ({
-            ...product,
-            imageUrl: normalizeImageUrl(product.imageUrl),
-            images: product.imageUrl ? [{ url: normalizeImageUrl(product.imageUrl)! }] : [],
-          })),
+          products: meiliResult.hits,
           pagination: { page, limit, total: meiliResult.total, pages: Math.ceil(meiliResult.total / limit) },
           facets: meiliResult.facets,
           source: 'meilisearch',
@@ -71,15 +66,7 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
-    return ok({
-      products: products.map((product) => ({
-        ...product,
-        imageUrl: normalizeImageUrl((product as any).imageUrl),
-        images: product.images.map((image) => ({ ...image, url: normalizeImageUrl(image.url) || image.url })),
-      })),
-      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
-      source: 'database',
-    });
+    return ok({ products, pagination: { page, limit, total, pages: Math.ceil(total / limit) }, source: 'database' });
   } catch (error) {
     if (error instanceof z.ZodError) return badRequest('Parámetros inválidos');
     return serverError(error);
