@@ -1,82 +1,54 @@
+/**
+ * src/lib/env.ts
+ * Server-side environment variable validation.
+ *
+ * 'server-only' ensures this file cannot be imported from Client Components.
+ * In Vitest, 'server-only' is mocked to an empty module (see vitest.config.ts).
+ */
 import 'server-only';
-import { z } from 'zod';
 
-const isProd = process.env.NODE_ENV === 'production';
-const isTest = process.env.NODE_ENV === 'test';
-
-const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  DATABASE_URL: z.string().min(1),
-  NEXT_PUBLIC_APP_URL: z.string().url().default('http://localhost:3000'),
-  JWT_SECRET: z.string().min(32),
-  JWT_REFRESH_SECRET: z.string().min(32),
-  REDIS_URL: z.string().optional(),
-  REDIS_HOST: z.string().optional(),
-  REDIS_PORT: z.string().optional(),
-  TRANSBANK_ENV: z.enum(['integration', 'production']).default('integration'),
-  TRANSBANK_COMMERCE_CODE: z.string().optional(),
-  TRANSBANK_API_KEY: z.string().optional(),
-  MERCADOPAGO_ACCESS_TOKEN: z.string().optional(),
-  MERCADOPAGO_PUBLIC_KEY: z.string().optional(),
-  MERCADOPAGO_WEBHOOK_SECRET: z.string().optional(),
-  BLUEXPRESS_API_KEY: z.string().optional(),
-  BLUEXPRESS_ACCOUNT: z.string().optional(),
-  MINIO_ENDPOINT: z.string().optional(),
-  MINIO_PORT: z.string().optional(),
-  MINIO_ACCESS_KEY: z.string().optional(),
-  MINIO_SECRET_KEY: z.string().optional(),
-  MINIO_BUCKET: z.string().optional(),
-  MINIO_PUBLIC_URL: z.string().url().optional(),
-  SMTP_HOST: z.string().optional(),
-  SMTP_PORT: z.string().optional(),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASS: z.string().optional(),
-  EMAIL_FROM: z.string().optional(),
-});
-
-export type AppEnv = z.infer<typeof envSchema>;
-
-let cachedEnv: AppEnv | null = null;
-
-export function getEnv(): AppEnv {
-  if (cachedEnv) return cachedEnv;
-
-  const parsed = envSchema.safeParse(process.env);
-  if (!parsed.success) {
-    const details = parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ');
-    throw new Error(`Invalid environment configuration: ${details}`);
+function requireEnv(name: string, fallback?: string): string {
+  const value = process.env[name] ?? fallback;
+  if (!value && process.env.NODE_ENV === 'production') {
+    throw new Error(`Missing required environment variable: ${name}`);
   }
-
-  const env = parsed.data;
-
-  if (!isTest && env.NEXT_PUBLIC_APP_URL.includes('localhost') && isProd) {
-    throw new Error('NEXT_PUBLIC_APP_URL must be a public production URL');
-  }
-
-  if (!isTest && env.TRANSBANK_ENV === 'production') {
-    if (!env.TRANSBANK_COMMERCE_CODE || !env.TRANSBANK_API_KEY) {
-      throw new Error('Transbank production mode requires TRANSBANK_COMMERCE_CODE and TRANSBANK_API_KEY');
-    }
-  }
-
-  if (!isTest && env.MERCADOPAGO_ACCESS_TOKEN && !env.MERCADOPAGO_PUBLIC_KEY) {
-    throw new Error('MERCADOPAGO_PUBLIC_KEY is required when MercadoPago is enabled');
-  }
-
-  if (!isTest && env.SMTP_HOST && (!env.SMTP_USER || !env.SMTP_PASS || !env.EMAIL_FROM)) {
-    throw new Error('SMTP_HOST requires SMTP_USER, SMTP_PASS and EMAIL_FROM');
-  }
-
-  cachedEnv = env;
-  return env;
+  return value ?? '';
 }
 
-export function validateEnv() {
-  return getEnv();
-}
+export const env = {
+  // Database
+  DATABASE_URL: requireEnv('DATABASE_URL', 'postgresql://divinittys:divinittys_secret@localhost:5432/divinittys'),
 
-export const env = new Proxy({} as AppEnv, {
-  get(_target, prop: keyof AppEnv) {
-    return getEnv()[prop];
-  },
-});
+  // Auth
+  JWT_SECRET:         requireEnv('JWT_SECRET',         'fallback_secret_change_in_production'),
+  JWT_REFRESH_SECRET: requireEnv('JWT_REFRESH_SECRET', 'fallback_refresh_secret'),
+
+  // App
+  NODE_ENV:        (process.env.NODE_ENV ?? 'development') as 'development' | 'test' | 'production',
+  APP_URL:         requireEnv('NEXT_PUBLIC_APP_URL', 'http://localhost:3000'),
+
+  // MinIO
+  MINIO_ENDPOINT:   process.env.MINIO_ENDPOINT   ?? 'localhost',
+  MINIO_PORT:       process.env.MINIO_PORT        ?? '9000',
+  MINIO_ACCESS_KEY: process.env.MINIO_ACCESS_KEY  ?? 'minioadmin',
+  MINIO_SECRET_KEY: process.env.MINIO_SECRET_KEY  ?? 'minioadmin',
+  MINIO_BUCKET:     process.env.MINIO_BUCKET      ?? 'imagenes',
+
+  // Search
+  MEILISEARCH_URL:     process.env.MEILISEARCH_URL     ?? 'http://localhost:7700',
+  MEILISEARCH_API_KEY: process.env.MEILISEARCH_API_KEY ?? '',
+
+  // Payments
+  TRANSBANK_ENV:           process.env.TRANSBANK_ENV            ?? 'integration',
+  TRANSBANK_COMMERCE_CODE: process.env.TRANSBANK_COMMERCE_CODE  ?? '597055555532',
+  TRANSBANK_API_KEY:       process.env.TRANSBANK_API_KEY         ?? '579B532A7440BB0C9079DED94D31EA1615BACEB56610332264630D42D0A36B1C',
+  MERCADOPAGO_ACCESS_TOKEN: process.env.MERCADOPAGO_ACCESS_TOKEN ?? '',
+
+  // External APIs
+  OPENAI_API_KEY:     process.env.OPENAI_API_KEY     ?? '',
+  BLUEXPRESS_API_KEY: process.env.BLUEXPRESS_API_KEY ?? '',
+  BLUEXPRESS_ACCOUNT: process.env.BLUEXPRESS_ACCOUNT ?? '',
+
+  // Redis
+  REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
+} as const;

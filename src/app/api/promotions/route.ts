@@ -1,38 +1,52 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { created, ok, serverError } from '@/lib/utils/api';
+import { ok, created, badRequest, serverError } from '@/lib/utils/api';
+import { withAdmin } from '@/lib/admin-auth';
 
-const schema = z.object({
-  name: z.string().min(3),
-  type: z.enum(['PERCENTAGE', 'FIXED_AMOUNT', 'FREE_SHIPPING']),
-  value: z.coerce.number().nonnegative(),
-  rules: z.record(z.any()).optional(),
-  startAt: z.string().datetime(),
-  endAt: z.string().datetime(),
-  isActive: z.boolean().default(true),
+const PromotionSchema = z.object({
+  title:       z.string().min(1),
+  description: z.string().optional(),
+  type:        z.enum(['BANNER', 'POPUP', 'EMAIL']),
+  imageUrl:    z.string().url().optional(),
+  linkUrl:     z.string().url().optional(),
+  isActive:    z.boolean().default(true),
+  startsAt:    z.string().datetime().optional(),
+  endsAt:      z.string().datetime().optional(),
 });
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    return ok(await prisma.promotion.findMany({ orderBy: { startAt: 'desc' } }));
-  } catch (error) {
-    return serverError(error);
+    const { searchParams } = new URL(req.url);
+    const onlyActive = searchParams.get('active') === 'true';
+
+    const promotions = await prisma.promotion.findMany({
+      where: onlyActive ? { isActive: true } : undefined,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return ok({ promotions });
+  } catch (e) {
+    return serverError(e);
   }
 }
 
 export async function POST(req: NextRequest) {
+  const { user, error } = await withAdmin(req);
+  if (error) return error;
+
   try {
-    const parsed = schema.parse(await req.json());
+    const data = PromotionSchema.parse(await req.json());
     const promotion = await prisma.promotion.create({
       data: {
-        ...parsed,
-        startAt: new Date(parsed.startAt),
-        endAt: new Date(parsed.endAt),
+        ...data,
+        startsAt: data.startsAt ? new Date(data.startsAt) : null,
+        endsAt:   data.endsAt   ? new Date(data.endsAt)   : null,
       },
     });
-    return created(promotion);
-  } catch (error) {
-    return serverError(error);
+    return created({ promotion });
+  } catch (e) {
+    if (e instanceof z.ZodError) return badRequest('Datos inválidos', e.errors);
+    return serverError(e);
   }
 }

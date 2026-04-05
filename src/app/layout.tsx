@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from 'next';
 import { Cormorant_Garamond, Plus_Jakarta_Sans } from 'next/font/google';
 import { Toaster } from 'react-hot-toast';
 import Providers from '@/components/layout/Providers';
-import { validateEnv } from '@/lib/env';
 import './globals.css';
 
 const cormorant = Cormorant_Garamond({
@@ -50,8 +49,6 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  validateEnv();
-
   return (
     <html lang="es" suppressHydrationWarning className={`${cormorant.variable} ${plusJakarta.variable}`}>
       <body className="bg-background font-sans antialiased">
