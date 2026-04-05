@@ -5,7 +5,6 @@ import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { Tag, ArrowRight, Clock } from 'lucide-react';
 import { formatCLP, calculateDiscount } from '@/lib/utils/api';
-import { normalizeImageUrl } from '@/lib/images';
 
 type PriceLike = number | string | { toString: () => string };
 
@@ -87,9 +86,9 @@ export default function OffersBanner({ products }: { products: Product[] }) {
 
                     {/* Image */}
                     <div className="relative aspect-square bg-white/5">
-                      {normalizeImageUrl(product.images[0]?.url) ? (
+                      {product.images[0]?.url ? (
                         <Image
-                          src={normalizeImageUrl(product.images[0]?.url)!}
+                          src={product.images[0].url}
                           alt={product.name}
                           fill
                           className="object-cover group-hover:scale-105 transition-transform duration-500"

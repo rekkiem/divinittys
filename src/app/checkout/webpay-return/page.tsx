@@ -19,13 +19,6 @@ export default function WebpayReturnPage() {
     const commit = async () => {
       // Cancelled or timeout
       if (!tokenWs || tbkToken || tbkOrdenCompra) {
-        if (tbkToken || tbkOrdenCompra) {
-          await fetch('/api/payments?action=webpay-commit', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ TBK_TOKEN: tbkToken, TBK_ORDEN_COMPRA: tbkOrdenCompra }),
-          }).catch(() => null);
-        }
         setStatus('error');
         setMessage('El pago fue cancelado o no se completó.');
         return;

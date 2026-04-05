@@ -15,7 +15,6 @@ import {
   PutBucketCorsCommand,
   PutBucketPolicyCommand,
 } from '@aws-sdk/client-s3';
-import { buildMediaUrl } from '@/lib/images';
 
 // ── Config from environment ─────────────────────────────────────────
 const MINIO_ENDPOINT   = process.env.MINIO_ENDPOINT   || 'localhost';
@@ -113,11 +112,11 @@ export function getBucketName(): string {
  * We handle this by using MINIO_PUBLIC_URL env if set.
  */
 export function getPublicUrl(key: string, bucket = MINIO_BUCKET): string {
-  if (process.env.MINIO_PUBLIC_URL) {
-    return `${process.env.MINIO_PUBLIC_URL.replace(/\/$/, '')}/${bucket}/${key}`;
-  }
-
-  return buildMediaUrl(bucket, key);
+  // Allow override for Docker environments where internal/external URLs differ
+  const publicBase =
+    process.env.MINIO_PUBLIC_URL ||
+    `${MINIO_USE_SSL ? 'https' : 'http'}://localhost:${MINIO_PORT}`;
+  return `${publicBase}/${bucket}/${key}`;
 }
 
 /**

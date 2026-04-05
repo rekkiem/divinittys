@@ -1,22 +1,51 @@
 import { prisma } from '@/lib/prisma';
+import { getAuthUser } from '@/lib/auth';
+import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
+import { NextRequest } from 'next/server';
+import { Package } from 'lucide-react';
 
-export const dynamic = 'force-dynamic';
+async function getVendorData(userId: string) {
+  const vendor = await prisma.vendor.findUnique({
+    where: { userId },
+    include: { _count: { select: { products: true } } },
+  });
+  if (!vendor) return null;
 
-export default async function VendorDashboardPage() {
-  const [vendorsCount, productsCount, payoutsCount] = await Promise.all([
-    prisma.vendor.count(),
-    prisma.product.count({ where: { vendorId: { not: null } } }),
-    prisma.vendorPayout.count(),
+  const [products, payouts] = await Promise.all([
+    prisma.product.findMany({
+      where: { vendorId: vendor.id },
+      include: { inventory: { select: { stock: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    }),
+    prisma.vendorPayout.findMany({
+      where: { vendorId: vendor.id },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+    }),
   ]);
 
+  return { vendor, products, payouts };
+}
+
+export default async function VendorPage() {
+  // Note: Full auth requires middleware integration
+  // For now, show a placeholder if no vendor context
   return (
-    <main className="container py-10 space-y-6">
-      <h1 className="text-3xl font-semibold">Panel Vendor</h1>
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="card-product p-4"><p className="text-sm">Vendors</p><p className="text-2xl font-bold">{vendorsCount}</p></div>
-        <div className="card-product p-4"><p className="text-sm">Productos marketplace</p><p className="text-2xl font-bold">{productsCount}</p></div>
-        <div className="card-product p-4"><p className="text-sm">Payouts</p><p className="text-2xl font-bold">{payoutsCount}</p></div>
+    <div className="min-h-screen bg-background p-8">
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div>
+          <h1 className="font-display text-3xl font-medium text-charcoal-700">Panel de Vendedor</h1>
+          <p className="font-sans text-muted-foreground mt-1">Gestiona tus productos y pagos</p>
+        </div>
+        <div className="bg-white rounded-2xl border border-champagne-100 p-8 text-center">
+          <Package className="w-12 h-12 text-charcoal-200 mx-auto mb-3" />
+          <p className="font-sans text-charcoal-500">
+            Inicia sesión como vendedor para acceder a tu panel.
+          </p>
+        </div>
       </div>
-    </main>
+    </div>
   );
 }
