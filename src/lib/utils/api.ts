@@ -38,12 +38,18 @@ export function conflict(message: string) {
 }
 
 export function serverError(error?: unknown) {
-  console.error('Server error:', error);
+  if (process.env.NODE_ENV !== 'production') {
+    console.error('[API Error]', error);
+  } else {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('[API Error]', msg);
+  }
   return NextResponse.json(
     { success: false, error: 'Error interno del servidor' },
     { status: 500 }
   );
 }
+
 
 export function validationError(error: ZodError) {
   return NextResponse.json(

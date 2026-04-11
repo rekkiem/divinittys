@@ -1,22 +1,32 @@
-import { env } from '@/lib/env';
-import { startEmailWorker } from '@/lib/queue/email.queue';
-import { logger } from '@/lib/logger';
-
-declare global {
-  var __divinittysWorkersStarted: boolean | undefined;
-}
-
+/**
+ * src/instrumentation.ts
+ * Next.js instrumentation hook — runs once at server startup.
+ * Used to initialize BullMQ workers and Meilisearch index.
+ * Docs: https://nextjs.org/docs/app/building-your-application/optimizing/instrumentation
+ */
 export async function register() {
+  // Only run on the server (not Edge runtime)
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
-  if (global.__divinittysWorkersStarted) return;
 
-  global.__divinittysWorkersStarted = true;
+  const { env } = await import('@/lib/env');
 
-  if (!env.REDIS_URL && !env.REDIS_HOST) {
-    logger.warn('workers.skip', { reason: 'redis_missing' });
-    return;
+  // ── Meilisearch index setup (non-blocking) ─────────────────────
+  try {
+    const { setupMeiliIndex } = await import('@/lib/search/meilisearch');
+    await setupMeiliIndex();
+  } catch {
+    // Meilisearch not available — search will fall back to SQL
+    console.warn('[instrumentation] Meilisearch not available, using SQL fallback');
   }
 
-  startEmailWorker();
-  logger.info('workers.started', { email: true });
+  // ── BullMQ workers (only when Redis is configured) ─────────────
+  if (env.REDIS_URL) {
+    try {
+      const { startSearchWorker } = await import('@/lib/queue/search.queue');
+      startSearchWorker();
+      console.log('[instrumentation] Search worker started');
+    } catch {
+      console.warn('[instrumentation] Redis not available, queue workers disabled');
+    }
+  }
 }
