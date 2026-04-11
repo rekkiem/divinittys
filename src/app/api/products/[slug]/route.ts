@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { withAdmin } from '@/lib/admin-auth';
+import { normalizeProductMedia, normalizeProductsMedia } from '@/lib/images';
 import { ok, notFound, serverError } from '@/lib/utils/api';
 
 // GET — public (storefront)
@@ -35,7 +36,11 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
       }),
     ]);
 
-    return ok({ product, rating: { avg: ratingData._avg.rating || 0, count: ratingData._count.rating }, related });
+    return ok({
+      product: normalizeProductMedia(product),
+      rating: { avg: ratingData._avg.rating || 0, count: ratingData._count.rating },
+      related: normalizeProductsMedia(related),
+    });
   } catch (error) { return serverError(error); }
 }
 

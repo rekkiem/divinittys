@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import { prisma } from '@/lib/prisma';
+import { normalizeProductMedia } from '@/lib/images';
 import Link from 'next/link';
 import { Plus, Upload } from 'lucide-react';
 import AdminProductsClient from '@/components/admin/AdminProductsClient';
@@ -20,14 +21,17 @@ async function getProducts(page = 1, limit = 50) {
     prisma.product.count(),
   ]);
 
-  const normalized = products.map((p: any) => ({
-    ...p,
+  const normalized = products.map((p: any) => {
+    const product = normalizeProductMedia(p);
+    return {
+      ...product,
     price:        Number(p.basePrice),
     basePrice:    Number(p.basePrice),
     comparePrice: p.comparePrice ? Number(p.comparePrice) : null,
     // Ensure imageUrl is present (from direct field or first image)
-    imageUrl:     p.imageUrl || p.images?.[0]?.url || null,
-  }));
+      imageUrl: product.imageUrl || product.images?.[0]?.url || null,
+    };
+  });
 
   return { products: normalized, total, totalPages: Math.ceil(total / limit) };
 }

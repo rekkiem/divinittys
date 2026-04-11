@@ -24,6 +24,9 @@
     --input: 30 20% 88%;
     --ring: 24 46% 60%;
     --radius: 0.75rem;
+    --font-cormorant: "Cormorant Garamond", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+    --font-plus-jakarta: "Plus Jakarta Sans", Aptos, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --font-jetbrains: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   }
 
   .dark {

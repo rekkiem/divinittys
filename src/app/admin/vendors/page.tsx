@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma';
 import { Store } from 'lucide-react';
 
+export const dynamic = 'force-dynamic';
+
 async function getVendors() {
   return prisma.vendor.findMany({
     include: {
