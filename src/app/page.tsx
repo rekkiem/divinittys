@@ -1,13 +1,16 @@
-import dynamic from 'next/dynamic';
+import dynamicImport from 'next/dynamic';
 import { Suspense } from 'react';
 import { unstable_cache } from 'next/cache';
 import { prisma } from '@/lib/prisma';
+import { normalizeProductsMedia } from '@/lib/images';
 import HeroSection from '@/components/shop/HeroSection';
 import FeaturedCategories from '@/components/shop/FeaturedCategories';
 import FeaturedProducts from '@/components/shop/FeaturedProducts';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import OffersBanner from '@/components/shop/OffersBanner';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata = {
   title: 'DIVINITTYS | Productos de Belleza Profesional',
@@ -20,9 +23,9 @@ export const metadata = {
   },
 };
 
-const BeautyAssistantBanner = dynamic(() => import('@/components/ai/BeautyAssistantBanner'));
-const HairDiagnosisBanner = dynamic(() => import('@/components/ai/HairDiagnosisBanner'));
-const BrandsCarousel = dynamic(() => import('@/components/shop/BrandsCarousel'));
+const BeautyAssistantBanner = dynamicImport(() => import('@/components/ai/BeautyAssistantBanner'));
+const HairDiagnosisBanner = dynamicImport(() => import('@/components/ai/HairDiagnosisBanner'));
+const BrandsCarousel = dynamicImport(() => import('@/components/shop/BrandsCarousel'));
 
 const getHomeData = unstable_cache(
   async () => {
@@ -59,7 +62,12 @@ const getHomeData = unstable_cache(
       }),
     ]);
 
-    return { featuredProducts, categories, brands, onSaleProducts };
+    return {
+      featuredProducts: normalizeProductsMedia(featuredProducts),
+      categories,
+      brands,
+      onSaleProducts: normalizeProductsMedia(onSaleProducts),
+    };
   },
   ['home-data'],
   { revalidate: 300, tags: ['home'] }
