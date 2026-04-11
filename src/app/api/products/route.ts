@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { normalizeProductsMedia } from '@/lib/images';
 import { ok, badRequest, serverError, paginate } from '@/lib/utils/api';
 import { searchProducts } from '@/lib/search/meilisearch';
 
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
       const meiliResult = await searchProducts({ q, page, limit, category, brand, minPrice, maxPrice, onSale, sort });
       if (meiliResult) {
         return ok({
-          products: meiliResult.hits,
+          products: normalizeProductsMedia(meiliResult.hits),
           pagination: { page, limit, total: meiliResult.total, pages: Math.ceil(meiliResult.total / limit) },
           facets: meiliResult.facets,
           source: 'meilisearch',
@@ -66,7 +67,11 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
-    return ok({ products, pagination: { page, limit, total, pages: Math.ceil(total / limit) }, source: 'database' });
+    return ok({
+      products: normalizeProductsMedia(products),
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+      source: 'database',
+    });
   } catch (error) {
     if (error instanceof z.ZodError) return badRequest('Parámetros inválidos');
     return serverError(error);

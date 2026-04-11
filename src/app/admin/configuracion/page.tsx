@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma';
 import ConfiguracionClient from './ConfiguracionClient';
 
+export const dynamic = 'force-dynamic';
+
 async function getSettings() {
   const rows = await prisma.setting.findMany({ orderBy: { key: 'asc' } });
   return Object.fromEntries(rows.map((r: any) => [r.key, r.value]));

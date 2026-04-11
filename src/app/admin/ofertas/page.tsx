@@ -2,6 +2,8 @@ import { prisma } from '@/lib/prisma';
 import { Percent } from 'lucide-react';
 import { formatCLP } from '@/lib/utils/api';
 
+export const dynamic = 'force-dynamic';
+
 export default async function OfertasPage() {
   const onSaleProducts = await prisma.product.findMany({
     where: { isOnSale: true, isActive: true },

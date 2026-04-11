@@ -5,6 +5,8 @@ import Footer from '@/components/layout/Footer';
 import ProductsGrid from '@/components/shop/ProductsGrid';
 import ProductsFilters from '@/components/shop/ProductsFilters';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata = {
   title: 'Catálogo de Productos | DIVINITTYS',
   description: 'Explora nuestra colección completa de productos de belleza y cuidado capilar.',

@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma';
 import { Megaphone } from 'lucide-react';
 
+export const dynamic = 'force-dynamic';
+
 async function getPromotions() {
   return prisma.promotion.findMany({
     orderBy: { createdAt: 'desc' },

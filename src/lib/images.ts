@@ -2,6 +2,15 @@ function isLikelyMinioHost(hostname: string) {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === 'minio';
 }
 
+type ImageLike = {
+  url?: string | null;
+};
+
+type ProductMediaLike = {
+  imageUrl?: string | null;
+  images?: ImageLike[] | null;
+};
+
 export function buildMediaUrl(bucket: string, key: string) {
   const safeKey = key
     .split('/')
@@ -37,4 +46,21 @@ export function normalizeImageUrl(url?: string | null) {
   }
 
   return url;
+}
+
+export function normalizeProductMedia<T extends ProductMediaLike>(product: T): T {
+  return {
+    ...product,
+    imageUrl: normalizeImageUrl(product.imageUrl),
+    images: Array.isArray(product.images)
+      ? product.images.map((image) => ({
+          ...image,
+          url: normalizeImageUrl(image.url),
+        }))
+      : product.images,
+  };
+}
+
+export function normalizeProductsMedia<T extends ProductMediaLike>(products: T[]): T[] {
+  return products.map((product) => normalizeProductMedia(product));
 }

@@ -9,6 +9,7 @@ import { motion } from 'framer-motion';
 import { useCartStore } from '@/hooks/useCart';
 import { useWishlistStore } from '@/hooks/useWishlist';
 import { formatCLP, calculateDiscount } from '@/lib/utils/api';
+import { normalizeImageUrl } from '@/lib/images';
 import toast from 'react-hot-toast';
 
 type PriceLike = number | string | { toString: () => string };
@@ -43,7 +44,8 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
   const discount = comparePrice ? calculateDiscount(price, comparePrice) : 0;
   const inWishlist = hydrated ? isInWishlist(product.id) : false;
   const inStock = !product.inventory || product.inventory.stock > 0;
-  const imageUrl = product.images?.[0]?.url || product.imageUrl || '/placeholder-product.svg';
+  const imageUrl =
+    normalizeImageUrl(product.images?.[0]?.url || product.imageUrl) || '/placeholder-product.svg';
 
   useEffect(() => {
     setHydrated(true);
