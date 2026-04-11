@@ -69,7 +69,7 @@ export default async function MarketingPage() {
                   </span>
                 </div>
                 <span className="font-sans text-xs text-charcoal-400">
-                  {coupon.usageLimit ? `${coupon.usedCount}/${coupon.usageLimit} usos` : `${coupon.usedCount} usos`}
+                  {coupon.maxUses ? `${coupon.usedCount}/${coupon.maxUses} usos` : `${coupon.usedCount} usos`}
                 </span>
               </div>
             ))}

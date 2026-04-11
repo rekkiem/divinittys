@@ -115,6 +115,7 @@ export default function ProductDetail({ product }: { product: Product }) {
                 src={product.images[selectedImage].url}
                 alt={product.images[selectedImage].alt || product.name}
                 fill
+                sizes="(max-width: 1024px) 100vw, 50vw"
                 className="object-cover"
                 priority
               />
@@ -143,7 +144,7 @@ export default function ProductDetail({ product }: { product: Product }) {
                   }`}
                 >
                   {img.url ? (
-                    <Image src={img.url} alt="" width={64} height={64} className="object-cover w-full h-full" />
+                    <Image src={img.url} alt="" width={64} height={64} sizes="64px" className="object-cover w-full h-full" />
                   ) : (
                     <div className="w-full h-full bg-champagne-200" />
                   )}
