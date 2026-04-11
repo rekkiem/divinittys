@@ -19,8 +19,6 @@ import {
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const;
 const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 
-export const config = { api: { bodyParser: false } };
-
 export async function POST(req: NextRequest) {
   // ── Auth ──────────────────────────────────────────────────────────
   const { user, error } = await withAdmin(req);
