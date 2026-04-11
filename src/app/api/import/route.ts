@@ -110,6 +110,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Process full product import
+    // Pre-cache categories and brands to avoid N+1 queries inside the loop
+    const categoryCache = new Map<string, string>();
+    const brandCache    = new Map<string, string | null>();
+
     for (const row of fichasData) {
       if (!row.sku || !row.nombre) {
         results.errors.push(`Fila sin SKU o nombre: ${JSON.stringify(row)}`);
@@ -126,15 +130,19 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
-        // Ensure category exists
+        // Ensure category exists (cached to avoid N+1)
         const categoryName = String(row.categoria || 'Sin categoría').trim();
         const categorySlug = slugify(categoryName);
 
-        const category = await prisma.category.upsert({
-          where: { slug: categorySlug },
-          update: {},
-          create: { name: categoryName, slug: categorySlug },
-        });
+        if (!categoryCache.has(categorySlug)) {
+          const cat = await prisma.category.upsert({
+            where: { slug: categorySlug },
+            update: {},
+            create: { name: categoryName, slug: categorySlug },
+          });
+          categoryCache.set(categorySlug, cat.id);
+        }
+        const category = { id: categoryCache.get(categorySlug)! };
 
         // Ensure brand exists
         let brand = null;

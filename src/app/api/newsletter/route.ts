@@ -9,7 +9,24 @@ const SubscribeSchema = z.object({
   source: z.string().optional(),
 });
 
+// Simple in-memory rate limit for newsletter subscriptions
+// In production: use Redis (upstash/ratelimit or ioredis)
+const subscribeAttempts = new Map<string, { count: number; resetAt: number }>();
+
 export async function POST(req: NextRequest) {
+  // Rate limit: 3 subscriptions per IP per hour
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0] ?? 'unknown';
+  const now = Date.now();
+  const limit = subscribeAttempts.get(ip);
+
+  if (limit && limit.resetAt > now && limit.count >= 3) {
+    return Response.json({ error: 'Demasiados intentos. Intenta en una hora.' }, { status: 429 });
+  }
+  if (!limit || limit.resetAt <= now) {
+    subscribeAttempts.set(ip, { count: 1, resetAt: now + 3_600_000 });
+  } else {
+    limit.count++;
+  }
   try {
     const body = SubscribeSchema.parse(await req.json());
 
