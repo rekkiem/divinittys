@@ -1,3 +1,8 @@
+export const metadata = {
+  title: 'Iniciar Sesión | DIVINITTYS',
+  robots: { index: false },
+};
+
 import { Suspense } from 'react';
 import LoginForm from './LoginForm';
 

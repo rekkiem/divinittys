@@ -93,6 +93,7 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
                 src={imageUrl}
                 alt={product.name}
                 fill
+                sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
                 className={`object-cover transition-all duration-500 group-hover:scale-105 ${
                   imageLoaded ? 'opacity-100' : 'opacity-0'
                 }`}

@@ -17,7 +17,9 @@ on:
     branches: [main, develop]
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: '22'
+  # Opt into Node.js 24 runtime for Actions to suppress deprecation warnings
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
   # Shared Prisma flag — skip engine binary download in CI
   PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: '1'
   # Disable Next.js telemetry in all jobs

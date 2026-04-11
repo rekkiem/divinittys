@@ -8,6 +8,18 @@ import FeaturedProducts from '@/components/shop/FeaturedProducts';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import OffersBanner from '@/components/shop/OffersBanner';
+
+export const metadata = {
+  title: 'DIVINITTYS | Productos de Belleza Profesional',
+  description: 'Encuentra los mejores productos de belleza profesional: shampoos, tinturas, tratamientos y más. Envío gratis sobre $50.000.',
+  keywords: ['belleza', 'peluquería', 'shampoo', 'tintura', 'Davines', 'Elgon', 'Chile'],
+  openGraph: {
+    title: 'DIVINITTYS | Productos de Belleza Profesional',
+    description: 'Tu tienda online de belleza profesional en Chile',
+    type: 'website',
+  },
+};
+
 const BeautyAssistantBanner = dynamic(() => import('@/components/ai/BeautyAssistantBanner'));
 const HairDiagnosisBanner = dynamic(() => import('@/components/ai/HairDiagnosisBanner'));
 const BrandsCarousel = dynamic(() => import('@/components/shop/BrandsCarousel'));
