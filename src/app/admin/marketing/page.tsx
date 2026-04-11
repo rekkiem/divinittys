@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma';
 import { Tag, Users, Bell } from 'lucide-react';
 
+export const dynamic = 'force-dynamic';
+
 async function getMarketingData() {
   const [subscriberCount, activeCoupons, activePromotions] = await Promise.all([
     prisma.subscriber.count({ where: { isActive: true } }),

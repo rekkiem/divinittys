@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Edit2, Trash2, Eye, EyeOff, Search, Package, CheckSquare, Zap } from 'lucide-react';
 import { formatCLP } from '@/lib/utils/api';
+import { normalizeImageUrl } from '@/lib/images';
 import { useAuthStore } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
 
@@ -122,7 +123,7 @@ export default function AdminProductsClient({ products: initial }: { products: P
   };
 
   const getImageUrl = (p: Product) =>
-    p.images?.[0]?.url || p.imageUrl || '/placeholder-product.svg';
+    normalizeImageUrl(p.images?.[0]?.url || p.imageUrl) || '/placeholder-product.svg';
 
   return (
     <div className="space-y-4">

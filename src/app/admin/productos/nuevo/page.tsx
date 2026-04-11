@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma';
 import ProductForm from '@/components/admin/ProductForm';
 
+export const dynamic = 'force-dynamic';
+
 async function getData() {
   const [categories, brands] = await Promise.all([
     prisma.category.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true } }),

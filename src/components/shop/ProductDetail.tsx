@@ -8,6 +8,7 @@ import { motion } from 'framer-motion';
 import { useCartStore } from '@/hooks/useCart';
 import { useWishlistStore } from '@/hooks/useWishlist';
 import { formatCLP, calculateDiscount } from '@/lib/utils/api';
+import { normalizeImageUrl } from '@/lib/images';
 import toast from 'react-hot-toast';
 
 type PriceLike = number | string | { toString: () => string };
@@ -57,6 +58,23 @@ export default function ProductDetail({ product }: { product: Product }) {
   const stock = product.inventory?.stock ?? 0;
   const inStock = stock > 0 || !!product.inventory?.allowBackorder;
   const inWishlist = hydrated ? isInWishlist(product.id) : false;
+  const productImages = useMemo(() => {
+    const normalized = product.images
+      .map((image) => ({
+        ...image,
+        url: normalizeImageUrl(image.url),
+      }))
+      .filter((image) => !!image.url);
+
+    if (normalized.length > 0) {
+      return normalized;
+    }
+
+    const fallbackUrl = normalizeImageUrl(product.imageUrl);
+    return fallbackUrl
+      ? [{ id: 'fallback-image', url: fallbackUrl, alt: product.name, isMain: true }]
+      : [];
+  }, [product.imageUrl, product.images, product.name]);
   const avgRating = product.reviews.length
     ? product.reviews.reduce((sum, r) => sum + r.rating, 0) / product.reviews.length
     : 0;
@@ -74,7 +92,7 @@ export default function ProductDetail({ product }: { product: Product }) {
       id: product.id,
       name: product.name,
       price,
-      image: product.images.find((i) => i.isMain)?.url || product.images[0]?.url,
+      image: productImages.find((i) => i.isMain)?.url || productImages[0]?.url || undefined,
       slug: product.slug,
       quantity,
     });
@@ -110,10 +128,10 @@ export default function ProductDetail({ product }: { product: Product }) {
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3 }}
           >
-            {product.images[selectedImage]?.url ? (
+            {productImages[selectedImage]?.url ? (
               <Image
-                src={product.images[selectedImage].url}
-                alt={product.images[selectedImage].alt || product.name}
+                src={productImages[selectedImage].url!}
+                alt={productImages[selectedImage].alt || product.name}
                 fill
                 sizes="(max-width: 1024px) 100vw, 50vw"
                 className="object-cover"
@@ -133,9 +151,9 @@ export default function ProductDetail({ product }: { product: Product }) {
           </motion.div>
 
           {/* Thumbnails */}
-          {product.images.length > 1 && (
+          {productImages.length > 1 && (
             <div className="flex gap-2 overflow-x-auto pb-1">
-              {product.images.map((img, i) => (
+              {productImages.map((img, i) => (
                 <button
                   key={img.id}
                   onClick={() => setSelectedImage(i)}
