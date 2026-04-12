@@ -5,6 +5,16 @@ import { logger } from '@/lib/logger';
 async function releaseReservedStock(tx: Prisma.TransactionClient, orderId: string) {
   const items = await tx.orderItem.findMany({ where: { orderId } });
   for (const item of items) {
+    if (item.variantId) {
+      await tx.productVariant.updateMany({
+        where: { id: item.variantId },
+        data: {
+          stock: { increment: item.quantity },
+        },
+      });
+      continue;
+    }
+
     await tx.inventory.updateMany({
       where: {
         productId: item.productId,
@@ -88,18 +98,7 @@ export async function markPaymentPaid(params: {
     const items = await tx.orderItem.findMany({ where: { orderId: params.orderId } });
 
     for (const item of items) {
-      if (item.variantId) {
-        const updated = await tx.productVariant.updateMany({
-          where: { id: item.variantId, stock: { gte: item.quantity } },
-          data: { stock: { decrement: item.quantity } },
-        });
-
-        if (updated.count !== 1) {
-          throw new Error(`Insufficient variant stock for ${item.variantId}`);
-        }
-
-        continue;
-      }
+      if (item.variantId) continue;
 
       const updated = await tx.inventory.updateMany({
         where: {
