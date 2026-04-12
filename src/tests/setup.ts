@@ -68,6 +68,10 @@ vi.mock('@/lib/prisma', () => ({
       upsert:     vi.fn(),
       updateMany: vi.fn(),
     },
+    productVariant: {
+      update:     vi.fn(),
+      updateMany: vi.fn(),
+    },
     setting: {
       findMany: vi.fn().mockResolvedValue([]),
       upsert:   vi.fn(),
@@ -100,7 +104,8 @@ vi.mock('@/lib/prisma', () => ({
 const mockTx = {
   product:   { create: vi.fn(), update: vi.fn(), delete: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
   inventory: { create: vi.fn(), upsert: vi.fn(), updateMany: vi.fn() },
-  payment:   { update: vi.fn() },
+  productVariant: { update: vi.fn(), updateMany: vi.fn() },
+  payment:   { findUnique: vi.fn(), update: vi.fn() },
   order:     { update: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
   orderItem: { findMany: vi.fn().mockResolvedValue([]) },
 };

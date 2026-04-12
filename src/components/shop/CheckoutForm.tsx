@@ -39,6 +39,21 @@ export default function CheckoutForm() {
 
   const update = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  const splitName = (fullName: string) => {
+    const trimmed = fullName.trim();
+    if (!trimmed) return { firstName: '', lastName: '' };
+
+    const parts = trimmed.split(/\s+/);
+    if (parts.length === 1) {
+      return { firstName: parts[0], lastName: '-' };
+    }
+
+    return {
+      firstName: parts[0],
+      lastName: parts.slice(1).join(' '),
+    };
+  };
+
   const quoteShipping = async () => {
     if (!form.commune || !form.region) {
       toast.error('Ingresa tu dirección primero');
@@ -67,22 +82,37 @@ export default function CheckoutForm() {
   const placeOrder = async () => {
     setLoading(true);
     try {
+      const { firstName, lastName } = splitName(form.name);
       const orderRes = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items: items.map((i) => ({ productId: i.id, quantity: i.quantity, price: i.price })),
-          guestEmail: form.email,
-          guestName: form.name,
-          guestPhone: form.phone,
-          shippingData: { ...form, shippingQuote },
-          shippingAmount: shippingQuote?.price || 0,
-          subtotal: total(),
-          total: total() + (shippingQuote?.price || 0),
+          items: items.map((i) => ({
+            productId: i.id,
+            variantId: i.variantId,
+            quantity: i.quantity,
+          })),
+          shippingData: {
+            firstName,
+            lastName,
+            street: form.street,
+            number: form.number,
+            apartment: form.apartment,
+            commune: form.commune,
+            city: form.city,
+            region: form.region,
+            phone: form.phone,
+            email: form.email,
+          },
         }),
       });
       const orderData = await orderRes.json();
-      const orderId = orderData.data?.id;
+
+      if (!orderRes.ok) {
+        throw new Error(orderData.error || 'No se pudo crear el pedido');
+      }
+
+      const orderId = orderData.data?.order?.id;
 
       if (!orderId) throw new Error('Order creation failed');
 
@@ -119,8 +149,8 @@ export default function CheckoutForm() {
       } else {
         throw new Error('No se pudo iniciar el pago. Verifique que el pedido se creó correctamente.');
       }
-    } catch (err) {
-      toast.error('Error al procesar el pago. Por favor intenta nuevamente.');
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al procesar el pago. Por favor intenta nuevamente.');
     } finally {
       setLoading(false);
     }

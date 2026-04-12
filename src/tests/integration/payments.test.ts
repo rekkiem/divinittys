@@ -87,10 +87,14 @@ describe('webpay-commit', () => {
     vi.mocked(prisma.$transaction).mockImplementation(async (fn: any) => {
       if (typeof fn !== 'function') return Promise.all(fn);
       const tx = {
-        payment:   { update: vi.fn().mockResolvedValue({}) },
+        payment:   {
+          findUnique: vi.fn().mockResolvedValue({ id: PAY.id, status: 'PROCESSING' }),
+          update: vi.fn().mockResolvedValue({}),
+        },
         order:     { update: vi.fn().mockResolvedValue({}) },
         orderItem: { findMany: vi.fn().mockResolvedValue([]) },
         inventory: { updateMany: vi.fn().mockResolvedValue({}) },
+        productVariant: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
       };
       return fn(tx);
     });
@@ -105,8 +109,20 @@ describe('webpay-commit', () => {
       response_code: -1, status: 'FAILED',
     } as any);
     vi.mocked(prisma.payment.findFirst).mockResolvedValue(PAY as any);
-    vi.mocked(prisma.payment.update).mockResolvedValue({} as any);
-    vi.mocked(prisma.order.update).mockResolvedValue({} as any);
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn: any) => {
+      if (typeof fn !== 'function') return Promise.all(fn);
+      const tx = {
+        payment:   {
+          findUnique: vi.fn().mockResolvedValue({ id: PAY.id, status: 'PROCESSING' }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        order:     { update: vi.fn().mockResolvedValue({}) },
+        orderItem: { findMany: vi.fn().mockResolvedValue([]) },
+        inventory: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+        productVariant: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      };
+      return fn(tx);
+    });
     const res = await POST(req('webpay-commit', { token_ws: 'tbk-token-123' }));
     expect(res.status).toBe(200);
     expect((await res.json()).data.success).toBe(false);
