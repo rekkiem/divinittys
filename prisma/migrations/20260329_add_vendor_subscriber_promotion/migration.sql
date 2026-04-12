@@ -64,13 +64,43 @@ CREATE TABLE IF NOT EXISTS "promotions" (
 
 -- Add vendorId index and FK on products
 CREATE INDEX IF NOT EXISTS "products_vendorId_idx" ON "products"("vendorId");
-ALTER TABLE "products" ADD CONSTRAINT IF NOT EXISTS "products_vendorId_fkey"
-  FOREIGN KEY ("vendorId") REFERENCES "vendors"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'products_vendorId_fkey'
+  ) THEN
+    ALTER TABLE "products"
+      ADD CONSTRAINT "products_vendorId_fkey"
+      FOREIGN KEY ("vendorId") REFERENCES "vendors"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 -- Add FK on vendor_payouts
-ALTER TABLE "vendor_payouts" ADD CONSTRAINT IF NOT EXISTS "vendor_payouts_vendorId_fkey"
-  FOREIGN KEY ("vendorId") REFERENCES "vendors"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'vendor_payouts_vendorId_fkey'
+  ) THEN
+    ALTER TABLE "vendor_payouts"
+      ADD CONSTRAINT "vendor_payouts_vendorId_fkey"
+      FOREIGN KEY ("vendorId") REFERENCES "vendors"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 -- Add FK from vendors to users
-ALTER TABLE "vendors" ADD CONSTRAINT IF NOT EXISTS "vendors_userId_fkey"
-  FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'vendors_userId_fkey'
+  ) THEN
+    ALTER TABLE "vendors"
+      ADD CONSTRAINT "vendors_userId_fkey"
+      FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
