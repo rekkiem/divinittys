@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { createWebpayTransaction, commitWebpayTransaction } from '@/lib/payments/webpay';
 import { createMPPreference } from '@/lib/payments/mercadopago';
+import { markPaymentFailed, markPaymentPaid } from '@/lib/payments/payment-helpers';
 import { ok, badRequest, notFound, serverError } from '@/lib/utils/api';
 import { getAuthUser } from '@/lib/auth';
 
@@ -95,40 +96,22 @@ export async function POST(req: NextRequest) {
       const approved = result && (result as any).response_code === 0 && (result as any).status === 'AUTHORIZED';
 
       if (approved) {
-        await prisma.$transaction(async (tx: any) => {
-          await tx.payment.update({
-            where: { id: payment.id },
-            data: {
-              status: 'PAID', paidAt: new Date(),
-              externalId:    (result as any).authorization_code,
-              authCode:      (result as any).authorization_code,
-              installments:  (result as any).installments_number || 1,
-              paymentMethod: (result as any).payment_type_code,
-              responseData:  result as any,
-            },
-          });
-          await tx.order.update({
-            where: { id: payment.orderId },
-            data: { status: 'CONFIRMED', paymentStatus: 'PAID' },
-          });
-          // Decrement actual stock
-          const items = await tx.orderItem.findMany({ where: { orderId: payment.orderId } });
-          for (const item of items) {
-            await tx.inventory.updateMany({
-              where: { productId: item.productId },
-              data: { stock: { decrement: item.quantity }, reservedStock: { decrement: item.quantity } },
-            });
-          }
+        await markPaymentPaid({
+          paymentId: payment.id,
+          orderId: payment.orderId,
+          responseData: result as any,
+          externalId: (result as any).authorization_code,
+          authCode: (result as any).authorization_code,
+          installments: (result as any).installments_number || 1,
+          paymentMethod: (result as any).payment_type_code,
         });
         return ok({ success: true, orderNumber: payment.order.orderNumber });
       } else {
-        await prisma.payment.update({
-          where: { id: payment.id },
-          data: { status: 'FAILED', responseData: result as any },
-        });
-        await prisma.order.update({
-          where: { id: payment.orderId },
-          data: { paymentStatus: 'FAILED' },
+        await markPaymentFailed({
+          paymentId: payment.id,
+          orderId: payment.orderId,
+          reason: 'Pago rechazado por Transbank',
+          responseData: result as any,
         });
         return ok({ success: false, message: 'Pago rechazado por Transbank' });
       }
@@ -203,16 +186,21 @@ export async function GET(req: NextRequest) {
           where: { order: { orderNumber: mpPayment.external_reference } },
         });
         if (payment && mpPayment.status === 'approved') {
-          await prisma.$transaction([
-            prisma.payment.update({
-              where: { id: payment.id },
-              data: { status: 'PAID', paidAt: new Date(), responseData: mpPayment },
-            }),
-            prisma.order.update({
-              where: { id: payment.orderId },
-              data: { status: 'CONFIRMED', paymentStatus: 'PAID' },
-            }),
-          ]);
+          await markPaymentPaid({
+            paymentId: payment.id,
+            orderId: payment.orderId,
+            responseData: mpPayment,
+            externalId: String(mpPayment.id ?? ''),
+            paymentMethod: mpPayment.payment_method_id ?? null,
+            installments: Number(mpPayment.installments || 1),
+          });
+        } else if (payment && mpPayment.status && ['rejected', 'cancelled'].includes(mpPayment.status)) {
+          await markPaymentFailed({
+            paymentId: payment.id,
+            orderId: payment.orderId,
+            reason: `Pago MercadoPago ${mpPayment.status}`,
+            responseData: mpPayment,
+          });
         }
       }
     }
