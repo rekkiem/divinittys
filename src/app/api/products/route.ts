@@ -5,10 +5,12 @@ import { normalizeProductsMedia } from '@/lib/images';
 import { ok, badRequest, serverError, paginate } from '@/lib/utils/api';
 import { searchProducts } from '@/lib/search/meilisearch';
 
+export const dynamic = 'force-dynamic';
+
 // GET — public product listing with Meilisearch + SQL fallback
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
+    const { searchParams } = req.nextUrl;
     const q        = searchParams.get('q') || '';
     const page     = Math.max(1, parseInt(searchParams.get('page') || '1'));
     const limit    = Math.min(48, parseInt(searchParams.get('limit') || '20'));
