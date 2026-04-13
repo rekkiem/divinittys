@@ -153,7 +153,6 @@ jobs:
       DATABASE_URL: postgresql://divinittys:divinittys_secret@localhost:5432/divinittys_test
       REDIS_URL: redis://localhost:6379
       NEXT_PUBLIC_APP_URL: 'http://localhost:3000'
-      NODE_ENV: development
       # MinIO not available in CI — images will use placeholder
       MINIO_ENDPOINT: localhost
       MINIO_PORT: '9000'
@@ -208,10 +207,13 @@ jobs:
       - name: Build Next.js application
         run: npm run build
         env:
+          NODE_ENV: production
           SKIP_ENV_VALIDATION: '1'
 
       - name: Start Next.js server (production mode)
         run: npm run start &
+        env:
+          NODE_ENV: production
         # The '&' puts it in background — PID is tracked by the runner shell
 
       # FIX: Robust health check with retries + clear timeout error
