@@ -116,7 +116,6 @@ PORT_MEILI=7700
 
 # ── App ─────────────────────────────────────────────
 NEXT_PUBLIC_APP_URL=http://localhost:3000
-NODE_ENV=development
 
 # ── Base de datos ────────────────────────────────────
 POSTGRES_USER=divinittys
