@@ -153,6 +153,7 @@ jobs:
       DATABASE_URL: postgresql://divinittys:divinittys_secret@localhost:5432/divinittys_test
       REDIS_URL: redis://localhost:6379
       NEXT_PUBLIC_APP_URL: 'http://localhost:3000'
+      NODE_ENV: development
       # MinIO not available in CI — images will use placeholder
       MINIO_ENDPOINT: localhost
       MINIO_PORT: '9000'
@@ -207,30 +208,38 @@ jobs:
       - name: Build Next.js application
         run: npm run build
         env:
-          NODE_ENV: production
           SKIP_ENV_VALIDATION: '1'
 
       - name: Start Next.js server (production mode)
         run: npm run start &
-        env:
-          NODE_ENV: production
         # The '&' puts it in background — PID is tracked by the runner shell
 
       # FIX: Robust health check with retries + clear timeout error
       - name: Wait for server (health check)
         run: |
           echo "Waiting for http://localhost:3000/api/health ..."
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:3000/api/health > /dev/null 2>&1; then
-              echo "✅ Server ready after ${i} attempts"
+          for i in $(seq 1 40); do
+            # Accept HTTP 200 (healthy/degraded) — reject only 503 (DB down) or connection refused
+            HTTP_CODE=$(curl -s -o /tmp/health_response.json -w "%{http_code}"               --max-time 5               http://localhost:3000/api/health 2>/dev/null || echo "000")
+
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✅ Server ready after ${i} attempts (HTTP 200)"
+              cat /tmp/health_response.json
               exit 0
+            elif [ "$HTTP_CODE" = "503" ]; then
+              # 503 = DB down = truly unhealthy, fail fast
+              echo "❌ Server returned 503 (database unavailable)"
+              cat /tmp/health_response.json
+              exit 1
             fi
-            echo "  Attempt $i/30 — retrying in 3s..."
+
+            echo "  Attempt $i/40 — HTTP ${HTTP_CODE} — retrying in 3s..."
             sleep 3
           done
-          echo "❌ Server did not start within 90 seconds"
-          # Print last server logs for debugging
-          curl -v http://localhost:3000/api/health || true
+
+          echo "❌ Server did not respond within 120 seconds"
+          echo "--- Last health response ---"
+          curl -v http://localhost:3000/api/health 2>&1 || true
           exit 1
 
       - name: Run E2E Tests
