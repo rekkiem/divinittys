@@ -1,59 +1,68 @@
 # ============================================================
-# DIVINITTYS - Dockerfile optimizado (cache-efficient)
+# DIVINITTYS — Dockerfile multi-stage
+# Stages: base → deps → builder → production (default)
 # ============================================================
 
-FROM node:20-alpine AS base
+# ── Base ─────────────────────────────────────────────────────
+FROM node:22-alpine AS base
 RUN apk add --no-cache libc6-compat openssl curl
 WORKDIR /app
 
-# ── Deps: solo package.json + prisma schema ──────────────
-# FIX: Copiar prisma schema ANTES de npm install
-# Esto evita que el postinstall hook de prisma falle
+# ── Deps: install only what's needed ─────────────────────────
 FROM base AS deps
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma/
-# Instalar todas las deps (incluyendo dev para build)
-RUN npm ci --include=dev || npm install --include=dev
+RUN npm ci --include=dev
 
-# ── Development ──────────────────────────────────────────
+# ── Development (local Docker Compose) ───────────────────────
 FROM base AS development
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# Generar cliente Prisma dentro de la imagen
 RUN npx prisma generate
-# Pre-crear .next/cache para evitar ENOENT en bind mount
 RUN mkdir -p .next/cache
 EXPOSE 3000
 ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
 CMD ["npm", "run", "dev"]
 
-# ── Builder: Next.js production build ────────────────────
+# ── Builder (production build) ────────────────────────────────
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# Generate Prisma client for production
 RUN npx prisma generate
+# Build Next.js — requires env stubs (real values injected at runtime)
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+# Stub required env vars so build doesn't throw
+ENV DATABASE_URL="postgresql://stub:stub@localhost/stub"
+ENV JWT_SECRET="build-time-stub-not-used-at-runtime"
+ENV JWT_REFRESH_SECRET="build-time-stub-not-used-at-runtime"
 RUN npm run build
 
-# ── Production runtime (imagen mínima) ───────────────────
+# ── Production (Fly.io target) ────────────────────────────────
 FROM base AS production
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
 
+# Only production deps
 RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
+    adduser  --system --uid 1001 nextjs
 
-COPY --from=builder /app/public ./public
+# Copy Next.js standalone output (requires output: 'standalone' in next.config.js)
+COPY --from=builder /app/public           ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-COPY --from=builder /app/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static     ./.next/static
+# Copy Prisma for runtime migrations
+COPY --from=builder /app/prisma           ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
 USER nextjs
 EXPOSE 3000
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
+
+# Healthcheck so Fly.io knows when the app is ready
+HEALTHCHECK --interval=15s --timeout=10s --start-period=30s --retries=3 \
+  CMD curl -f http://localhost:3000/api/health || exit 1
+
 CMD ["node", "server.js"]
