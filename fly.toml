@@ -1,0 +1,44 @@
+# fly.toml — Divinittys production deployment
+# IMPORTANT: The app name here MUST match an app you created with:
+#   fly apps create divinittys   (or your chosen name)
+# Run: fly apps list   to see your existing apps
+
+app = "divinittys"       # ← CHANGE to your actual app name from: fly apps list
+primary_region = "scl"   # Santiago, Chile — closest to target market
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT                    = "3000"
+  NODE_ENV                = "production"
+  NEXT_TELEMETRY_DISABLED = "1"
+  # All secrets go in fly secrets set — NOT here
+  # fly secrets set DATABASE_URL="..." JWT_SECRET="..." etc.
+
+[http_service]
+  internal_port        = 3000
+  force_https          = true
+  auto_stop_machines   = "stop"
+  auto_start_machines  = true
+  min_machines_running = 0        # set to 1 to avoid cold starts
+
+  [http_service.concurrency]
+    type       = "requests"
+    hard_limit = 200
+    soft_limit = 150
+
+[[vm]]
+  memory = "512mb"
+  cpus   = 1
+
+[checks]
+  [checks.health]
+    grace_period = "30s"
+    interval     = "15s"
+    method       = "GET"
+    path         = "/api/health"
+    port         = 3000
+    timeout      = "10s"
+    # 200 = healthy, 200 degraded (Meilisearch down = ok)
+    # 503 = DB down = truly unhealthy
