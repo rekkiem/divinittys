@@ -38,12 +38,7 @@ export function conflict(message: string) {
 }
 
 export function serverError(error?: unknown) {
-  if (process.env.NODE_ENV !== 'production') {
-    console.error('[API Error]', error);
-  } else {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error('[API Error]', msg);
-  }
+  console.error('[API Error]', error);
   return NextResponse.json(
     { success: false, error: 'Error interno del servidor' },
     { status: 500 }

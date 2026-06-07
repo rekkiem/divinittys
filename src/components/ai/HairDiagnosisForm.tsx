@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, ArrowLeft, Sparkles, Loader2, CheckCircle2 } from 'lucide-react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { formatCLP } from '@/lib/utils/api';
 
@@ -136,7 +137,14 @@ export default function HairDiagnosisForm() {
                   <div className="group p-4 rounded-2xl border border-champagne-200 hover:border-primary-300 hover:shadow-md transition-all">
                     <div className="aspect-square rounded-xl bg-champagne-100 overflow-hidden mb-3">
                       {p.images[0]?.url ? (
-                        <img src={p.images[0].url} alt={p.name} className="w-full h-full object-cover" />
+                        <Image
+                          src={p.images[0].url}
+                          alt={p.name}
+                          width={240}
+                          height={240}
+                          sizes="(max-width: 768px) 50vw, 240px"
+                          className="w-full h-full object-cover"
+                        />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <span className="font-display text-3xl text-primary-300">D</span>
@@ -146,7 +154,7 @@ export default function HairDiagnosisForm() {
                     {p.brand && <p className="font-sans text-xs font-bold text-primary-500 uppercase tracking-wider mb-1">{p.brand.name}</p>}
                     <p className="font-sans text-sm font-medium text-charcoal-700 group-hover:text-primary-600 line-clamp-2 mb-2 transition-colors">{p.name}</p>
                     <p className="font-sans font-bold text-primary-600">{formatCLP(p.basePrice)}</p>
-                    {p.reason && <p className="font-sans text-xs text-charcoal-400 mt-1 italic">"{p.reason}"</p>}
+                    {p.reason && <p className="font-sans text-xs text-charcoal-400 mt-1 italic">&quot;{p.reason}&quot;</p>}
                   </div>
                 </Link>
               ))}

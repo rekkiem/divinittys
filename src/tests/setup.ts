@@ -44,6 +44,7 @@ vi.mock('@/lib/prisma', () => ({
     },
     category: {
       findFirst:  vi.fn(),
+      findUnique: vi.fn(),
       findMany:   vi.fn().mockResolvedValue([]),
       create:     vi.fn(),
       update:     vi.fn(),
@@ -51,6 +52,7 @@ vi.mock('@/lib/prisma', () => ({
       upsert:     vi.fn(),
     },
     brand: {
+      findUnique: vi.fn(),
       findMany:   vi.fn().mockResolvedValue([]),
       create:     vi.fn(),
       upsert:     vi.fn(),
