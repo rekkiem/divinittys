@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { withAdmin } from '@/lib/admin-auth';
 import { ok, badRequest, serverError } from '@/lib/utils/api';
+import { sanitizeText } from '@/lib/security/sanitize';
 
 export async function GET(req: NextRequest) {
   const { user, error } = await withAdmin(req);
@@ -23,7 +24,12 @@ export async function PUT(req: NextRequest) {
   const { user, error } = await withAdmin(req);
   if (error) return error;
   try {
-    const body = SettingsSchema.parse(await req.json());
+    const parsed = SettingsSchema.parse(await req.json());
+    const body = Object.fromEntries(
+      Object.entries(parsed).map(([key, value]) => [sanitizeText(key), sanitizeText(value).slice(0, 5000)])
+    );
+    const invalidKey = Object.keys(body).find((key) => !/^[a-z0-9._-]{2,100}$/i.test(key));
+    if (invalidKey) return badRequest(`Clave de configuración inválida: ${invalidKey}`);
     // Upsert each key
     await Promise.all(
       Object.entries(body).map(([key, value]) =>

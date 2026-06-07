@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
+import { sanitizeEmail, sanitizeText } from '@/lib/security/sanitize';
+import { getRequestIp, rateLimit } from '@/lib/security/rate-limit';
 import {
   signAccessToken,
   signRefreshToken,
@@ -26,11 +28,21 @@ const registerSchema = z.object({
 export async function POST(req: NextRequest) {
   const url = new URL(req.url);
   const action = url.searchParams.get('action') || 'login';
+  const ipAddress = getRequestIp(req);
 
   try {
     if (action === 'register') {
+      const limit = rateLimit(req, { key: 'auth-register', limit: 5, windowMs: 15 * 60 * 1000 });
+      if (!limit.allowed) return badRequest('Demasiados intentos de registro. Intenta nuevamente en unos minutos.');
+
       const body = await req.json();
-      const data = registerSchema.parse(body);
+      const parsed = registerSchema.parse(body);
+      const data = {
+        ...parsed,
+        name: sanitizeText(parsed.name),
+        email: sanitizeEmail(parsed.email),
+        phone: parsed.phone ? sanitizeText(parsed.phone) : undefined,
+      };
 
       const existing = await prisma.user.findUnique({ where: { email: data.email } });
       if (existing) return conflict('El email ya está registrado');
@@ -54,7 +66,7 @@ export async function POST(req: NextRequest) {
           userId: user.id,
           refreshToken,
           userAgent: req.headers.get('user-agent') || undefined,
-          ipAddress: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || undefined,
+          ipAddress,
           expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         },
       });
@@ -65,13 +77,18 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'login') {
+      const limit = rateLimit(req, { key: 'auth-login', limit: 10, windowMs: 15 * 60 * 1000 });
+      if (!limit.allowed) return badRequest('Demasiados intentos de inicio de sesión. Espera unos minutos.');
+
       const body = await req.json();
-      const { email, password } = z.object({
+      const parsed = z.object({
         email: z.string().email(),
         password: z.string(),
       }).parse(body);
+      const email = sanitizeEmail(parsed.email);
+      const password = parsed.password;
 
-      const user = await prisma.user.findUnique({ where: { email, isActive: true } });
+      const user = await prisma.user.findFirst({ where: { email, isActive: true } });
       if (!user) return unauthorized('Credenciales inválidas');
 
       const valid = await bcrypt.compare(password, user.passwordHash);
@@ -80,13 +97,22 @@ export async function POST(req: NextRequest) {
       const accessToken = await signAccessToken({ userId: user.id, email: user.email, role: user.role });
       const refreshToken = await signRefreshToken({ userId: user.id, email: user.email, role: user.role });
 
-      await prisma.session.upsert({
-        where: { refreshToken },
-        update: { refreshToken, expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
-        create: {
+      await prisma.session.deleteMany({
+        where: {
+          userId: user.id,
+          OR: [
+            { expiresAt: { lt: new Date() } },
+            { userAgent: req.headers.get('user-agent') || undefined, ipAddress },
+          ],
+        },
+      });
+
+      await prisma.session.create({
+        data: {
           userId: user.id,
           refreshToken,
           userAgent: req.headers.get('user-agent') || undefined,
+          ipAddress,
           expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         },
       });
@@ -144,7 +170,7 @@ export async function POST(req: NextRequest) {
       const payload = await verifyAccessToken(token);
       if (!payload) return unauthorized();
 
-      const user = await prisma.user.findUnique({
+      const user = await prisma.user.findFirst({
         where: { id: payload.userId, isActive: true },
         select: { id: true, email: true, name: true, role: true, avatar: true, phone: true },
       });
