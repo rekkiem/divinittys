@@ -10,6 +10,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAdmin } from '@/lib/admin-auth';
 import { prisma } from '@/lib/prisma';
+import { logger } from '@/lib/logger';
+import { sanitizeText } from '@/lib/security/sanitize';
 import {
   uploadToMinio,
   generateImageKey,
@@ -53,6 +55,14 @@ export async function POST(req: NextRequest) {
 
     // ── Persist in DB (if productId provided) ────────────────────────
     if (productId) {
+      const product = await prisma.product.findUnique({
+        where: { id: productId },
+        select: { id: true },
+      });
+      if (!product) {
+        return NextResponse.json({ error: 'Producto no encontrado para asociar la imagen.' }, { status: 404 });
+      }
+
       // Unset current main image if this one will be main
       if (isMain) {
         await prisma.productImage.updateMany({
@@ -68,7 +78,7 @@ export async function POST(req: NextRequest) {
         data: {
           productId,
           url:       publicUrl,
-          alt:       file.name.replace(/\.[^.]+$/, ''),
+          alt:       sanitizeText(file.name.replace(/\.[^.]+$/, '')).slice(0, 150),
           sortOrder: existingCount,
           isMain:    shouldBeMain,
         },
@@ -83,10 +93,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    console.log(`[Upload] ${user.email} → ${publicUrl}`);
+    logger.info('upload.image_uploaded', {
+      userId: user.id,
+      email: user.email,
+      productId,
+      url: publicUrl,
+      contentType: file.type,
+      size: file.size,
+    });
     return NextResponse.json({ success: true, url: publicUrl });
   } catch (err: any) {
-    console.error('[Upload] Error:', err?.message ?? err);
+    logger.error('upload.failed', { error: err });
     return NextResponse.json(
       { error: err?.message || 'Error interno al subir imagen' },
       { status: 500 }

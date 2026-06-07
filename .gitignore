@@ -18,6 +18,8 @@ build/
 # Logs
 *.log
 npm-debug.log*
+log/*
+!log/.gitkeep
 
 # OS
 .DS_Store

@@ -196,7 +196,7 @@ export default function SearchModal({ open, onClose }: { open: boolean; onClose:
                       }}
                       className="w-full py-3 text-center font-sans text-sm text-primary-500 hover:text-primary-600 font-semibold border-t border-champagne-200 mt-2 pt-4"
                     >
-                      Ver todos los resultados para "{query}"
+                      Ver todos los resultados para &quot;{query}&quot;
                     </button>
                   )}
                 </div>
@@ -204,7 +204,7 @@ export default function SearchModal({ open, onClose }: { open: boolean; onClose:
 
               {query && query.length >= 2 && !loading && results.length === 0 && (
                 <div className="text-center py-8 text-charcoal-400">
-                  <p className="font-sans text-sm">Sin resultados para "{query}"</p>
+                  <p className="font-sans text-sm">Sin resultados para &quot;{query}&quot;</p>
                   <p className="font-sans text-xs mt-1">Intenta con otro término</p>
                 </div>
               )}

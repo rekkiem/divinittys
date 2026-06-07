@@ -45,6 +45,7 @@ describe('POST /api/admin/products', () => {
     const token = await makeAdminToken();
     vi.mocked(prisma.user.findFirst).mockResolvedValue(MOCK_USERS.superAdmin as any);
     vi.mocked(prisma.product.findFirst).mockResolvedValue(null);
+    vi.mocked(prisma.category.findUnique).mockResolvedValue({ id: VALID_PRODUCT.categoryId, isActive: true } as any);
     const createdProduct = { ...MOCK_PRODUCT, id: 'new-prod-id' };
     vi.mocked(prisma.$transaction).mockImplementation(async (fn: any) => {
       if (typeof fn !== 'function') return Promise.all(fn);
@@ -110,6 +111,7 @@ describe('POST /api/admin/products', () => {
     const token = await makeToken('ADMIN', MOCK_USERS.admin.id);
     vi.mocked(prisma.user.findFirst).mockResolvedValue(MOCK_USERS.admin as any);
     vi.mocked(prisma.product.findFirst).mockResolvedValue(null);
+    vi.mocked(prisma.category.findUnique).mockResolvedValue({ id: VALID_PRODUCT.categoryId, isActive: true } as any);
     vi.mocked(prisma.$transaction).mockImplementation(async (fn: any) => {
       if (typeof fn !== 'function') return Promise.all(fn);
       const tx = {

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { withAdmin } from '@/lib/admin-auth';
 import { ok, created, badRequest, serverError } from '@/lib/utils/api';
 import { slugify } from '@/lib/utils/api';
+import { sanitizeMultilineText, sanitizeText } from '@/lib/security/sanitize';
 
 const ProductSchema = z.object({
   sku:               z.string().min(1),
@@ -35,7 +36,16 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const data = ProductSchema.parse(body);
+    const parsed = ProductSchema.parse(body);
+    const data = {
+      ...parsed,
+      sku: sanitizeText(parsed.sku),
+      name: sanitizeText(parsed.name),
+      slug: parsed.slug ? slugify(parsed.slug) : undefined,
+      description: parsed.description ? sanitizeMultilineText(parsed.description) : null,
+      shortDescription: parsed.shortDescription ? sanitizeText(parsed.shortDescription) : null,
+      tags: parsed.tags.map((tag) => sanitizeText(tag)).filter(Boolean),
+    };
     const slug = data.slug || slugify(data.name);
 
     const existing = await prisma.product.findFirst({
@@ -44,6 +54,16 @@ export async function POST(req: NextRequest) {
     if (existing) {
       const field = existing.slug === slug ? 'slug' : 'SKU';
       return badRequest(`Ya existe un producto con ese ${field}`);
+    }
+
+    const [category, brand] = await Promise.all([
+      prisma.category.findUnique({ where: { id: data.categoryId }, select: { id: true, isActive: true } }),
+      data.brandId ? prisma.brand.findUnique({ where: { id: data.brandId }, select: { id: true, isActive: true } }) : Promise.resolve(null),
+    ]);
+    if (!category || !category.isActive) return badRequest('La categoría seleccionada no existe o está inactiva');
+    if (data.brandId && (!brand || !brand.isActive)) return badRequest('La marca seleccionada no existe o está inactiva');
+    if (data.comparePrice !== null && data.comparePrice !== undefined && data.comparePrice <= data.basePrice) {
+      return badRequest('El precio comparado debe ser mayor que el precio base');
     }
 
     const product = await prisma.$transaction(async (tx: any) => {

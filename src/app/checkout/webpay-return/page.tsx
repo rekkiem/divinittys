@@ -10,12 +10,11 @@ export default function WebpayReturnPage() {
   const [message, setMessage] = useState('');
   const params = useSearchParams();
   const router = useRouter();
+  const tokenWs = params?.get('token_ws');
+  const tbkToken = params?.get('TBK_TOKEN');
+  const tbkOrdenCompra = params?.get('TBK_ORDEN_COMPRA');
 
   useEffect(() => {
-    const tokenWs      = params?.get('token_ws');
-    const tbkToken     = params?.get('TBK_TOKEN');        // cancelled
-    const tbkOrdenCompra = params?.get('TBK_ORDEN_COMPRA'); // timeout
-
     const commit = async () => {
       // Cancelled or timeout
       if (!tokenWs || tbkToken || tbkOrdenCompra) {
@@ -44,7 +43,7 @@ export default function WebpayReturnPage() {
       setStatus('error');
       setMessage('Error de conexión al confirmar el pago.');
     });
-  }, []);
+  }, [tokenWs, tbkToken, tbkOrdenCompra]);
 
   return (
     <div className="min-h-screen bg-champagne-50/30">
