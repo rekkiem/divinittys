@@ -48,7 +48,9 @@ ENV PORT=3000
 
 # Only production deps
 RUN addgroup --system --gid 1001 nodejs && \
-    adduser  --system --uid 1001 nextjs
+    adduser  --system --uid 1001 nextjs && \
+    mkdir -p /app/log && \
+    chown -R nextjs:nodejs /app/log
 
 # Copy Next.js standalone output (requires output: 'standalone' in next.config.js)
 COPY --from=builder /app/public           ./public

@@ -35,12 +35,12 @@ export default function ImageUploader({
   const { accessToken, logout }   = useAuthStore();
   const router = useRouter();
 
-  const notify = (next: UploadedImage[]) => {
+  const notify = useCallback((next: UploadedImage[]) => {
     setImages(next);
     onImagesChange?.(next);
-  };
+  }, [onImagesChange]);
 
-  const uploadFile = async (file: File, isMain = false): Promise<string> => {
+  const uploadFile = useCallback(async (file: File, isMain = false): Promise<string> => {
     const fd = new FormData();
     fd.append('file', file);
     if (productId) fd.append('productId', productId);
@@ -66,7 +66,7 @@ export default function ImageUploader({
 
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     return data.url as string;
-  };
+  }, [accessToken, productId]);
 
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files?.length) return;
@@ -99,7 +99,7 @@ export default function ImageUploader({
       toast.success(`${added.length} imagen${added.length > 1 ? 'es subidas' : ' subida'} ✓`);
     }
     setUploading(false);
-  }, [images, productId, accessToken, maxImages]);
+  }, [images, maxImages, notify, uploadFile]);
 
   const handleReLogin = async () => {
     await logout();
