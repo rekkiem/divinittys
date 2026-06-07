@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { withAdmin } from '@/lib/admin-auth';
 import { ok, badRequest, notFound, serverError } from '@/lib/utils/api';
+import { slugify } from '@/lib/utils/api';
+import { sanitizeMultilineText, sanitizeText } from '@/lib/security/sanitize';
 
 const UpdateSchema = z.object({
   name:              z.string().min(2).optional(),
@@ -31,8 +33,19 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (error) return error;
 
   try {
-    const data = UpdateSchema.parse(await req.json());
+    const parsed = UpdateSchema.parse(await req.json());
+    const data = {
+      ...parsed,
+      name: parsed.name ? sanitizeText(parsed.name) : undefined,
+      slug: parsed.slug ? slugify(parsed.slug) : undefined,
+      description: parsed.description ? sanitizeMultilineText(parsed.description) : parsed.description,
+      shortDescription: parsed.shortDescription ? sanitizeText(parsed.shortDescription) : parsed.shortDescription,
+      tags: parsed.tags?.map((tag) => sanitizeText(tag)).filter(Boolean),
+    };
     const { stock, lowStockThreshold, trackStock, imageUrls, ...productData } = data;
+    if (productData.basePrice !== undefined && productData.comparePrice !== undefined && productData.comparePrice !== null && productData.comparePrice <= productData.basePrice) {
+      return badRequest('El precio comparado debe ser mayor que el precio base');
+    }
 
     const updated = await prisma.$transaction(async (tx: any) => {
       const p = await tx.product.update({ where: { id: params.id }, data: productData });

@@ -14,6 +14,7 @@ import { prisma } from '@/lib/prisma';
 import { createWebpayTransaction, commitWebpayTransaction } from '@/lib/payments/webpay';
 import { createMPPreference } from '@/lib/payments/mercadopago';
 import { markPaymentFailed, markPaymentPaid } from '@/lib/payments/payment-helpers';
+import { verifyMercadoPagoSignature } from '@/lib/payments/mercadopago-webhook';
 import { ok, badRequest, notFound, serverError } from '@/lib/utils/api';
 import { getAuthUser } from '@/lib/auth';
 
@@ -163,7 +164,6 @@ export async function POST(req: NextRequest) {
     if (err.code === 404) return NextResponse.json({ error: err.message }, { status: 404 });
     if (err.code === 400) return NextResponse.json({ error: err.message }, { status: 400 });
     if (err instanceof z.ZodError) return badRequest('Datos inválidos', err.errors);
-    console.error('[Payments] Error:', err);
     return serverError(err);
   }
 }
@@ -174,11 +174,22 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const type   = searchParams.get('type');
     const dataId = searchParams.get('data.id') || searchParams.get('id');
+    const webhookSecret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
+
+    if (type === 'payment' && dataId && webhookSecret) {
+      const isValid = verifyMercadoPagoSignature(req, dataId, webhookSecret);
+      if (!isValid) {
+        return NextResponse.json({ error: 'Firma de webhook inválida' }, { status: 401 });
+      }
+    }
 
     if (type === 'payment' && dataId && process.env.MERCADOPAGO_ACCESS_TOKEN) {
       const res  = await fetch(`https://api.mercadopago.com/v1/payments/${dataId}`, {
         headers: { Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}` },
       });
+      if (!res.ok) {
+        return NextResponse.json({ error: 'No se pudo validar el pago en Mercado Pago' }, { status: 502 });
+      }
       const mpPayment = await res.json();
 
       if (mpPayment.external_reference) {

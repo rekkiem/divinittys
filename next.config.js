@@ -44,17 +44,19 @@ const nextConfig = {
   },
 
   async headers() {
+    const appOrigin = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     return [
       {
         source: '/api/:path*',
         headers: [
           { key: 'Access-Control-Allow-Credentials', value: 'true' },
-          { key: 'Access-Control-Allow-Origin',      value: process.env.NEXT_PUBLIC_APP_URL || '*' },
+          { key: 'Access-Control-Allow-Origin',      value: appOrigin },
           { key: 'Access-Control-Allow-Methods',     value: 'GET,POST,PUT,PATCH,DELETE,OPTIONS' },
           { key: 'Access-Control-Allow-Headers',     value: 'Authorization, Content-Type' },
           { key: 'X-Content-Type-Options',           value: 'nosniff' },
           { key: 'X-Frame-Options',                  value: 'DENY' },
           { key: 'Referrer-Policy',                  value: 'strict-origin-when-cross-origin' },
+          { key: 'Content-Security-Policy',          value: "frame-ancestors 'none'" },
         ],
       },
       // Serve uploaded files from /public/uploads (local fallback)

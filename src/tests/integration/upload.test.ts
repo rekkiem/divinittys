@@ -72,6 +72,7 @@ describe('POST /api/admin/upload', () => {
   it('persists ProductImage record when productId is provided', async () => {
     const token = await makeAdminToken();
     vi.mocked(prisma.user.findFirst).mockResolvedValue(MOCK_USERS.superAdmin as any);
+    vi.mocked(prisma.product.findUnique).mockResolvedValue({ id: 'prod-1' } as any);
     vi.mocked(prisma.productImage.count).mockResolvedValue(0);
     vi.mocked(prisma.productImage.create).mockResolvedValue({ id: 'img-1', url: MOCK_IMAGE_URL, isMain: true, sortOrder: 0 } as any);
     vi.mocked(prisma.product.update).mockResolvedValue({ id: 'prod-1' } as any);
@@ -89,6 +90,7 @@ describe('POST /api/admin/upload', () => {
   it('unsets previous main image before setting new main', async () => {
     const token = await makeAdminToken();
     vi.mocked(prisma.user.findFirst).mockResolvedValue(MOCK_USERS.superAdmin as any);
+    vi.mocked(prisma.product.findUnique).mockResolvedValue({ id: 'prod-1' } as any);
     vi.mocked(prisma.productImage.count).mockResolvedValue(2);
     vi.mocked(prisma.productImage.updateMany).mockResolvedValue({ count: 1 });
     vi.mocked(prisma.productImage.create).mockResolvedValue({ id: 'img-2' } as any);

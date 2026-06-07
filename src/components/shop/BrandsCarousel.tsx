@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { motion } from 'framer-motion';
 
 type Brand = { id: string; name: string; slug: string; logo?: string | null };
@@ -29,7 +30,14 @@ export default function BrandsCarousel({ brands }: { brands: Brand[] }) {
               className="flex-none px-8 py-4 bg-white rounded-2xl border border-champagne-300 hover:border-primary-300 hover:shadow-md transition-all duration-300 min-w-[140px] flex items-center justify-center group"
             >
               {brand.logo ? (
-                <img src={brand.logo} alt={brand.name} className="h-8 object-contain filter grayscale group-hover:grayscale-0 transition-all" />
+                <Image
+                  src={brand.logo}
+                  alt={brand.name}
+                  width={120}
+                  height={32}
+                  sizes="120px"
+                  className="h-8 w-auto object-contain filter grayscale group-hover:grayscale-0 transition-all"
+                />
               ) : (
                 <span className="font-display font-light text-charcoal-400 group-hover:text-primary-500 transition-colors text-lg tracking-widest">
                   {brand.name}

@@ -20,7 +20,7 @@ export default async function OfertasPage() {
 
       <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
         <p className="font-sans text-sm text-amber-700">
-          Para activar una oferta, edita el producto y marca "En oferta" + ingresa un precio de comparación mayor al precio base.
+          Para activar una oferta, edita el producto y marca &quot;En oferta&quot; + ingresa un precio de comparación mayor al precio base.
         </p>
       </div>
 

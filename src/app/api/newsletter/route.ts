@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { ok, badRequest, conflict, serverError } from '@/lib/utils/api';
+import { rateLimit } from '@/lib/security/rate-limit';
+import { sanitizeEmail, sanitizeText } from '@/lib/security/sanitize';
 
 const SubscribeSchema = z.object({
   email:  z.string().email('Email inválido'),
@@ -9,26 +11,18 @@ const SubscribeSchema = z.object({
   source: z.string().optional(),
 });
 
-// Simple in-memory rate limit for newsletter subscriptions
-// In production: use Redis (upstash/ratelimit or ioredis)
-const subscribeAttempts = new Map<string, { count: number; resetAt: number }>();
-
 export async function POST(req: NextRequest) {
-  // Rate limit: 3 subscriptions per IP per hour
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0] ?? 'unknown';
-  const now = Date.now();
-  const limit = subscribeAttempts.get(ip);
-
-  if (limit && limit.resetAt > now && limit.count >= 3) {
+  const limit = rateLimit(req, { key: 'newsletter-subscribe', limit: 3, windowMs: 60 * 60 * 1000 });
+  if (!limit.allowed) {
     return Response.json({ error: 'Demasiados intentos. Intenta en una hora.' }, { status: 429 });
   }
-  if (!limit || limit.resetAt <= now) {
-    subscribeAttempts.set(ip, { count: 1, resetAt: now + 3_600_000 });
-  } else {
-    limit.count++;
-  }
   try {
-    const body = SubscribeSchema.parse(await req.json());
+    const parsed = SubscribeSchema.parse(await req.json());
+    const body = {
+      email: sanitizeEmail(parsed.email),
+      name: parsed.name ? sanitizeText(parsed.name) : undefined,
+      source: parsed.source ? sanitizeText(parsed.source).slice(0, 100) : undefined,
+    };
 
     const existing = await prisma.subscriber.findUnique({ where: { email: body.email } });
     if (existing) {
@@ -55,11 +49,9 @@ export async function DELETE(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const email = searchParams.get('email');
     if (!email) return badRequest('Email requerido');
+    const normalizedEmail = sanitizeEmail(email);
 
-    await prisma.subscriber.update({
-      where: { email },
-      data: { isActive: false },
-    });
+    await prisma.subscriber.updateMany({ where: { email: normalizedEmail }, data: { isActive: false } });
 
     return ok({ message: 'Desuscripción exitosa' });
   } catch (e) {
