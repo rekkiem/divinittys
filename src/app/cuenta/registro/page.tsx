@@ -59,7 +59,7 @@ export default function RegisterPage() {
           {[
             { key: 'name', label: 'Nombre completo', type: 'text', placeholder: 'Tu nombre' },
             { key: 'email', label: 'Email', type: 'email', placeholder: 'tu@email.com' },
-            { key: 'phone', label: 'Teléfono (opcional)', type: 'tel', placeholder: '+56 9 1234 5678' },
+            { key: 'phone', label: 'Teléfono (opcional)', type: 'tel', placeholder: '+56 9 8902 4643' },
           ].map(({ key, label, type, placeholder }) => (
             <div key={key}>
               <label className="block font-sans text-xs font-semibold text-charcoal-500 mb-1.5 uppercase tracking-wider">{label}</label>
