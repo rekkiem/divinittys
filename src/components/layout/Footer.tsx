@@ -49,8 +49,8 @@ export default function Footer() {
             <div className="space-y-2">
               {[
                 { Icon: MapPin, text: 'Santiago, Chile' },
-                { Icon: Phone, text: '+56 9 1234 5678' },
-                { Icon: Mail, text: 'hola@divinittys.cl' },
+                { Icon: Phone, text: '+56 9 8902 4643' },
+                { Icon: Mail, text: 'contacto@divinittys.cl' },
               ].map(({ Icon, text }) => (
                 <div key={text} className="flex items-center gap-2 text-sm text-charcoal-300">
                   <Icon className="w-4 h-4 text-primary-400 shrink-0" />

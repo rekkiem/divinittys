@@ -192,7 +192,7 @@ export default function CheckoutForm() {
             </div>
             <div>
               <label className="block font-sans text-xs font-semibold text-charcoal-500 mb-1.5">Teléfono</label>
-              <input type="tel" value={form.phone} onChange={(e) => update('phone', e.target.value)} placeholder="+56 9 1234 5678" className="input-field" />
+              <input type="tel" value={form.phone} onChange={(e) => update('phone', e.target.value)} placeholder="+56 9 8902 4643" className="input-field" />
             </div>
           </div>
         </div>
