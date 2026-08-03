@@ -14,8 +14,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@divinittys.cl';
     const updated = await prisma.user.updateMany({
-      where: { email: 'admin@divinittys.cl' },
+      where: { email: adminEmail },
       data: { role: 'SUPER_ADMIN', isActive: true },
     });
 
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
     }
 
     const user = await prisma.user.findFirst({
-      where: { email: 'admin@divinittys.cl' },
+      where: { email: adminEmail },
       select: { id: true, email: true, role: true, isActive: true },
     });
 

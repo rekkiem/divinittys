@@ -3,8 +3,8 @@
  */
 import { Page, expect } from '@playwright/test';
 
-export const ADMIN_EMAIL    = 'admin@divinittys.cl';
-export const ADMIN_PASSWORD = 'Admin123!@#';
+export const ADMIN_EMAIL    = process.env.PLAYWRIGHT_ADMIN_EMAIL || process.env.ADMIN_EMAIL || 'admin@divinittys.cl';
+export const ADMIN_PASSWORD = process.env.PLAYWRIGHT_ADMIN_PASSWORD || process.env.ADMIN_PASSWORD || '';
 export const BASE_URL       = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000';
 
 /** Login as admin and wait for redirect to /admin */
