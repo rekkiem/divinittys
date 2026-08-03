@@ -14,7 +14,7 @@ const isDocker  = process.env.RUNNING_IN_DOCKER === 'true'
                || process.env.DATABASE_URL?.includes('@postgres:')
                || false;
 
-const DB_URL    = process.env.DATABASE_URL || 'postgresql://divinittys:divinittys_secret@localhost:5432/divinittys';
+const DB_URL    = process.env.DATABASE_URL;
 const MEILI_URL = process.env.MEILISEARCH_URL || 'http://localhost:7700';
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const APP_URL   = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
@@ -34,6 +34,7 @@ async function check(service: string, fn: () => Promise<string>) {
 }
 
 async function checkPostgres() {
+  if (!DB_URL) return 'Skipped (DATABASE_URL not set)';
   const prisma = new PrismaClient({ datasources: { db: { url: DB_URL } } });
   try {
     await prisma.$queryRaw`SELECT 1`;
