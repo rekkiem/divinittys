@@ -1,10 +1,10 @@
 # ============================================================
-# DIVINITTYS — Dockerfile multi-stage
-# Stages: base → deps → builder → production (default)
+# DIVINITTYS - Dockerfile multi-stage
+# Stages: base -> deps -> development -> migrator -> builder -> production
 # ============================================================
 
 # ── Base ─────────────────────────────────────────────────────
-FROM node:22-alpine AS base
+FROM node:20-alpine AS base
 RUN apk add --no-cache libc6-compat openssl curl
 WORKDIR /app
 
@@ -25,6 +25,15 @@ ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
 CMD ["npm", "run", "dev"]
 
+# ── Migrator (production one-off Prisma migrations + seed) ───
+FROM base AS migrator
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npx prisma generate
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+CMD ["sh", "-c", "npx prisma migrate deploy && npx tsx prisma/seed.ts"]
+
 # ── Builder (production build) ────────────────────────────────
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
@@ -38,13 +47,15 @@ ENV NODE_ENV=production
 ENV DATABASE_URL="postgresql://stub:stub@localhost/stub"
 ENV JWT_SECRET="build-time-stub-not-used-at-runtime"
 ENV JWT_REFRESH_SECRET="build-time-stub-not-used-at-runtime"
+ENV NEXT_PUBLIC_APP_URL="https://divinittys.cl"
 RUN npm run build
 
-# ── Production (Fly.io target) ────────────────────────────────
+# ── Production runtime ────────────────────────────────────────
 FROM base AS production
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
 # Only production deps
 RUN addgroup --system --gid 1001 nodejs && \

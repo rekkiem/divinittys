@@ -2,10 +2,7 @@
  * src/services/minioClient.ts
  * MinIO S3-compatible client using @aws-sdk/client-s3
  *
- * Infrastructure:
- *   Endpoint: http://localhost:9000  (or MINIO_ENDPOINT:MINIO_PORT)
- *   Access:   minioadmin / minioadmin  (overridable via env)
- *   Bucket:   imagenes                (overridable via MINIO_BUCKET)
+ * Infrastructure is configured through MINIO_* environment variables.
  */
 import {
   S3Client,
@@ -16,13 +13,22 @@ import {
   PutBucketPolicyCommand,
 } from '@aws-sdk/client-s3';
 
+const isProduction = process.env.NODE_ENV === 'production';
+
+function requireStorageEnv(name: string, developmentFallback?: string): string {
+  const value = process.env[name];
+  if (value) return value;
+  if (isProduction) throw new Error(`Missing required environment variable: ${name}`);
+  return developmentFallback ?? '';
+}
+
 // ── Config from environment ─────────────────────────────────────────
-const MINIO_ENDPOINT   = process.env.MINIO_ENDPOINT   || 'localhost';
-const MINIO_PORT       = process.env.MINIO_PORT        || '9000';
-const MINIO_USE_SSL    = process.env.MINIO_USE_SSL     === 'true';
-const MINIO_ACCESS_KEY = process.env.MINIO_ACCESS_KEY  || 'minioadmin';
-const MINIO_SECRET_KEY = process.env.MINIO_SECRET_KEY  || 'minioadmin';
-const MINIO_BUCKET     = process.env.MINIO_BUCKET      || 'imagenes';
+const MINIO_ENDPOINT   = requireStorageEnv('MINIO_ENDPOINT', 'localhost');
+const MINIO_PORT       = process.env.MINIO_PORT || '9000';
+const MINIO_USE_SSL    = process.env.MINIO_USE_SSL === 'true';
+const MINIO_ACCESS_KEY = requireStorageEnv('MINIO_ACCESS_KEY');
+const MINIO_SECRET_KEY = requireStorageEnv('MINIO_SECRET_KEY');
+const MINIO_BUCKET     = requireStorageEnv('MINIO_BUCKET', 'imagenes');
 
 // Public base URL — used to construct image URLs returned to clients
 // Inside Docker: minio:9000. On host: localhost:9000

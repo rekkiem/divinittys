@@ -8,13 +8,10 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from './prisma';
+import { env } from './env';
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'fallback_secret_change_in_production'
-);
-const JWT_REFRESH_SECRET = new TextEncoder().encode(
-  process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret'
-);
+const JWT_SECRET = new TextEncoder().encode(env.JWT_SECRET);
+const JWT_REFRESH_SECRET = new TextEncoder().encode(env.JWT_REFRESH_SECRET);
 
 export type JWTPayload = {
   userId: string;
@@ -28,7 +25,7 @@ export async function signAccessToken(payload: Omit<JWTPayload, 'iat' | 'exp'>) 
   return new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('7d')
+    .setExpirationTime(env.JWT_EXPIRES_IN)
     .sign(JWT_SECRET);
 }
 
@@ -36,7 +33,7 @@ export async function signRefreshToken(payload: Omit<JWTPayload, 'iat' | 'exp'>)
   return new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('30d')
+    .setExpirationTime(env.JWT_REFRESH_EXPIRES_IN)
     .sign(JWT_REFRESH_SECRET);
 }
 

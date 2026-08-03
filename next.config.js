@@ -1,16 +1,20 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  poweredByHeader: false,
+  compress: true,
 
   images: {
     remotePatterns: [
       // ── MinIO local (development) ────────────────────────────────
-      // minioadmin credentials, bucket: imagenes
       { protocol: 'http', hostname: 'localhost', port: '9000', pathname: '/imagenes/**' },
       { protocol: 'http', hostname: 'localhost', port: '9000', pathname: '/**' },
       // MinIO inside Docker network
       { protocol: 'http', hostname: 'minio',     port: '9000', pathname: '/imagenes/**' },
       { protocol: 'http', hostname: 'minio',     port: '9000', pathname: '/**' },
+      // Production media proxy
+      { protocol: 'https', hostname: 'divinittys.cl', pathname: '/media/**' },
+      { protocol: 'https', hostname: 'www.divinittys.cl', pathname: '/media/**' },
       // ── Cloud / CDN ──────────────────────────────────────────────
       { protocol: 'https', hostname: '**.r2.cloudflarestorage.com', pathname: '/**' },
       { protocol: 'https', hostname: 'res.cloudinary.com',          pathname: '/**' },
@@ -46,6 +50,15 @@ const nextConfig = {
   async headers() {
     const appOrigin = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-DNS-Prefetch-Control', value: 'on' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+        ],
+      },
       {
         source: '/api/:path*',
         headers: [

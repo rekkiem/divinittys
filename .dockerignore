@@ -2,6 +2,9 @@ node_modules
 .next
 .git
 .gitignore
+.env
+.env.*
+!.env.example
 *.log
 log
 coverage
@@ -9,4 +12,8 @@ coverage
 *.tsbuildinfo
 README.md
 ROADMAP.md
-.env.local
+DEPLOY.md
+doc
+Publicaciones-*.xlsx
+test-results
+playwright-report

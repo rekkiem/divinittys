@@ -3,7 +3,7 @@
  * Tests login, redirect, and unauthorized access
  */
 import { test, expect } from '@playwright/test';
-import { loginAsAdmin, logout, ADMIN_EMAIL } from './helpers';
+import { loginAsAdmin, ADMIN_EMAIL, ADMIN_PASSWORD } from './helpers';
 
 test.describe('Admin Authentication', () => {
   test('redirects /admin to login when not authenticated', async ({ page }) => {
@@ -19,7 +19,7 @@ test.describe('Admin Authentication', () => {
     await page.goto('/cuenta/login');
     await page.waitForSelector('input[type="email"]');
     await page.fill('input[type="email"]', ADMIN_EMAIL);
-    await page.fill('input[type="password"]', 'Admin123!@#');
+    await page.fill('input[type="password"]', ADMIN_PASSWORD);
     await page.click('button[type="submit"]');
     await page.waitForURL('**/admin**', { timeout: 15_000 });
     await expect(page.locator('aside')).toBeVisible();
