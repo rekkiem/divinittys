@@ -2,7 +2,11 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
-import BeautyChat from '@/components/ai/BeautyChat';
+import dynamic from 'next/dynamic';
+
+const BeautyChat = dynamic(() => import('@/components/ai/BeautyChat'), {
+  ssr: false,
+});
 
 const queryClientConfig = {
   defaultOptions: {
