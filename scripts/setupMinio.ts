@@ -18,9 +18,10 @@ async function main() {
   const endpoint = process.env.MINIO_ENDPOINT || 'localhost';
   const port     = process.env.MINIO_PORT     || '9000';
   const bucket   = BUCKET;
+  const accessKey = process.env.MINIO_ACCESS_KEY || '(not set)';
 
   console.log(`   Endpoint:   http://${endpoint}:${port}`);
-  console.log(`   Access Key: ${process.env.MINIO_ACCESS_KEY || 'minioadmin'}`);
+  console.log(`   Access Key: ${accessKey}`);
   console.log(`   Bucket:     ${bucket}\n`);
 
   // 1. Test connectivity

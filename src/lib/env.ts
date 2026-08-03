@@ -7,48 +7,67 @@
  */
 import 'server-only';
 
-function requireEnv(name: string, fallback?: string): string {
-  const value = process.env[name] ?? fallback;
-  if (!value && process.env.NODE_ENV === 'production') {
+const isProduction = process.env.NODE_ENV === 'production';
+
+function requireEnv(name: string, developmentFallback?: string): string {
+  const value = process.env[name];
+  if (value) return value;
+  if (isProduction) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
-  return value ?? '';
+  return developmentFallback ?? '';
+}
+
+function optionalEnv(name: string, fallback = ''): string {
+  return process.env[name] ?? fallback;
 }
 
 export const env = {
   // Database
-  DATABASE_URL: requireEnv('DATABASE_URL', 'postgresql://divinittys:divinittys_secret@localhost:5432/divinittys'),
+  DATABASE_URL: requireEnv('DATABASE_URL'),
 
   // Auth
-  JWT_SECRET:         requireEnv('JWT_SECRET',         'fallback_secret_change_in_production'),
-  JWT_REFRESH_SECRET: requireEnv('JWT_REFRESH_SECRET', 'fallback_refresh_secret'),
+  JWT_SECRET:             requireEnv('JWT_SECRET'),
+  JWT_REFRESH_SECRET:     requireEnv('JWT_REFRESH_SECRET'),
+  JWT_EXPIRES_IN:         optionalEnv('JWT_EXPIRES_IN', '7d'),
+  JWT_REFRESH_EXPIRES_IN: optionalEnv('JWT_REFRESH_EXPIRES_IN', '30d'),
 
   // App
   NODE_ENV:        (process.env.NODE_ENV ?? 'development') as 'development' | 'test' | 'production',
   APP_URL:         requireEnv('NEXT_PUBLIC_APP_URL', 'http://localhost:3000'),
 
   // MinIO
-  MINIO_ENDPOINT:   process.env.MINIO_ENDPOINT   ?? 'localhost',
-  MINIO_PORT:       process.env.MINIO_PORT        ?? '9000',
-  MINIO_ACCESS_KEY: process.env.MINIO_ACCESS_KEY  ?? 'minioadmin',
-  MINIO_SECRET_KEY: process.env.MINIO_SECRET_KEY  ?? 'minioadmin',
-  MINIO_BUCKET:     process.env.MINIO_BUCKET      ?? 'imagenes',
+  MINIO_ENDPOINT:   requireEnv('MINIO_ENDPOINT', 'localhost'),
+  MINIO_PORT:       optionalEnv('MINIO_PORT', '9000'),
+  MINIO_USE_SSL:    optionalEnv('MINIO_USE_SSL', 'false'),
+  MINIO_ACCESS_KEY: requireEnv('MINIO_ACCESS_KEY'),
+  MINIO_SECRET_KEY: requireEnv('MINIO_SECRET_KEY'),
+  MINIO_BUCKET:     requireEnv('MINIO_BUCKET', 'imagenes'),
+  MINIO_PUBLIC_URL: optionalEnv('MINIO_PUBLIC_URL'),
 
   // Search
-  MEILISEARCH_URL:     process.env.MEILISEARCH_URL     ?? 'http://localhost:7700',
-  MEILISEARCH_API_KEY: process.env.MEILISEARCH_API_KEY ?? '',
+  MEILISEARCH_URL:     requireEnv('MEILISEARCH_URL', 'http://localhost:7700'),
+  MEILISEARCH_API_KEY: requireEnv('MEILISEARCH_API_KEY'),
 
   // Payments
-  TRANSBANK_ENV:           process.env.TRANSBANK_ENV            ?? 'integration',
-  TRANSBANK_COMMERCE_CODE: process.env.TRANSBANK_COMMERCE_CODE  ?? '597055555532',
-  TRANSBANK_API_KEY:       process.env.TRANSBANK_API_KEY         ?? '579B532A7440BB0C9079DED94D31EA1615BACEB56610332264630D42D0A36B1C',
-  MERCADOPAGO_ACCESS_TOKEN: process.env.MERCADOPAGO_ACCESS_TOKEN ?? '',
+  TRANSBANK_ENV:            optionalEnv('TRANSBANK_ENV', 'integration'),
+  TRANSBANK_COMMERCE_CODE:  optionalEnv('TRANSBANK_COMMERCE_CODE'),
+  TRANSBANK_API_KEY:        optionalEnv('TRANSBANK_API_KEY'),
+  MERCADOPAGO_ACCESS_TOKEN: optionalEnv('MERCADOPAGO_ACCESS_TOKEN'),
+  MERCADOPAGO_PUBLIC_KEY:   optionalEnv('MERCADOPAGO_PUBLIC_KEY'),
+  MERCADOPAGO_WEBHOOK_SECRET: optionalEnv('MERCADOPAGO_WEBHOOK_SECRET'),
 
   // External APIs
-  OPENAI_API_KEY:     process.env.OPENAI_API_KEY     ?? '',
-  BLUEXPRESS_API_KEY: process.env.BLUEXPRESS_API_KEY ?? '',
-  BLUEXPRESS_ACCOUNT: process.env.BLUEXPRESS_ACCOUNT ?? '',
+  OPENAI_API_KEY:     optionalEnv('OPENAI_API_KEY'),
+  BLUEXPRESS_API_KEY: optionalEnv('BLUEXPRESS_API_KEY'),
+  BLUEXPRESS_ACCOUNT: optionalEnv('BLUEXPRESS_ACCOUNT'),
 
   // Redis
-  REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
+  REDIS_URL:  requireEnv('REDIS_URL', 'redis://localhost:6379'),
+  REDIS_HOST: optionalEnv('REDIS_HOST'),
+  REDIS_PORT: optionalEnv('REDIS_PORT', '6379'),
+
+  // Admin bootstrap
+  ADMIN_EMAIL:    optionalEnv('ADMIN_EMAIL', 'admin@divinittys.cl'),
+  ADMIN_PASSWORD: optionalEnv('ADMIN_PASSWORD'),
 } as const;
