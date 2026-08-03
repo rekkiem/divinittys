@@ -117,7 +117,7 @@ export default function LoginForm() {
 
           {process.env.NODE_ENV !== 'production' && (
             <p className="mt-4 text-center font-sans text-xs text-charcoal-300">
-              Admin: admin@divinittys.cl / Admin123!@#
+              Las credenciales admin se definen en ADMIN_EMAIL y ADMIN_PASSWORD.
             </p>
           )}
 

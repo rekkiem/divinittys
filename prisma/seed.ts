@@ -2,31 +2,41 @@ import { PrismaClient, Role } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
+const isProduction = process.env.NODE_ENV === 'production';
+const adminEmail = process.env.ADMIN_EMAIL || 'admin@divinittys.cl';
+const adminPassword = process.env.ADMIN_PASSWORD;
 
 async function main() {
   console.log('🌱 Seeding DIVINITTYS database...');
 
   // ── Super Admin ─────────────────────────────────────────
-  // FIX: update always ensures role=SUPER_ADMIN even on re-runs
-  const adminPassword = await bcrypt.hash('Admin123!@#', 12);
-  const admin = await prisma.user.upsert({
-    where: { email: 'admin@divinittys.cl' },
-    update: {
-      // Always enforce SUPER_ADMIN role in case it was changed
-      role: Role.SUPER_ADMIN,
-      isActive: true,
-      name: 'Administrador',
-    },
-    create: {
-      email: 'admin@divinittys.cl',
-      name: 'Administrador',
-      passwordHash: adminPassword,
-      role: Role.SUPER_ADMIN,
-      isActive: true,
-      emailVerified: new Date(),
-    },
-  });
-  console.log(`  ✓ Admin user: ${admin.email} (role: ${admin.role})`);
+  if (!adminPassword && isProduction) {
+    throw new Error('Missing required environment variable: ADMIN_PASSWORD');
+  }
+
+  if (adminPassword) {
+    const passwordHash = await bcrypt.hash(adminPassword, 12);
+    const admin = await prisma.user.upsert({
+      where: { email: adminEmail },
+      update: {
+        role: Role.SUPER_ADMIN,
+        isActive: true,
+        name: 'Administrador',
+        passwordHash,
+      },
+      create: {
+        email: adminEmail,
+        name: 'Administrador',
+        passwordHash,
+        role: Role.SUPER_ADMIN,
+        isActive: true,
+        emailVerified: new Date(),
+      },
+    });
+    console.log(`  ✓ Admin user: ${admin.email} (role: ${admin.role})`);
+  } else {
+    console.warn('  ! ADMIN_PASSWORD not set; skipping admin bootstrap in development.');
+  }
 
   // ── Categories ───────────────────────────────────────────
   const categories = [
@@ -90,8 +100,8 @@ async function main() {
   console.log(`  ✓ ${settings.length} settings seeded`);
   console.log('\n✅ Seed complete!');
   console.log('─────────────────────────────────────────');
-  console.log('  Admin: admin@divinittys.cl');
-  console.log('  Pass:  Admin123!@#');
+  console.log(`  Admin email: ${adminEmail}`);
+  console.log('  Admin password: set through ADMIN_PASSWORD');
   console.log('─────────────────────────────────────────\n');
 }
 
