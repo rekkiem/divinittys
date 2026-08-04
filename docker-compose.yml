@@ -173,6 +173,8 @@ services:
         echo '🚀 Iniciando servidor...' &&
         npm run dev
       "
+    env_file:
+      - .env   # <--- Agrega esto al final o dentro del servicio
     networks:
       - divinittys_net
 
