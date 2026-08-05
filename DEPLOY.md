@@ -1,134 +1,184 @@
-# DIVINITTYS — Guía de Despliegue
+# DIVINITTYS — Deploy en Vultr (VPS + Docker Compose)
 
-## 🖥️ Local (Docker Desktop)
+## Arquitectura en Vultr
 
-### Primera vez
-```powershell
-# 1. Clonar / extraer proyecto
-cd C:\PRG\PROYECTOS\divinittys
-
-# 2. El .env ya viene preconfigurado. 
-#    Solo cambia puertos si hay conflictos:
-#    PORT_APP=3001, PORT_POSTGRES=5433, etc.
-
-# 3. Levantar todo
-docker compose up --build
-
-# 4. Esperar "🚀 Iniciando servidor..." (~2-3 min primera vez)
-# App: http://localhost:3000
-# Admin: http://localhost:3000/admin
-# MinIO: http://localhost:9001
-# Meilisearch: http://localhost:7700
+```
+Internet
+    │
+    ▼
+Vultr VPS (Ubuntu 22.04, 2vCPU, 4GB RAM ~$24/mes)
+    │
+    ├── Nginx (80/443) ──────────── SSL + reverse proxy
+    │       ├── divinittys.cl   → app:3000
+    │       └── media.divinittys.cl → minio:9000
+    │
+    ├── Next.js app (puerto interno 3000)
+    ├── PostgreSQL 16  (volumen persistente)
+    ├── Redis 7        (volumen persistente)
+    ├── Meilisearch 1.6 (volumen persistente)
+    └── MinIO          (volumen persistente)
 ```
 
-### Reset completo
-```powershell
-docker compose down -v   # borra volúmenes (datos)
-docker compose up --build
+## Requisitos previos
+
+- Cuenta Vultr: https://vultr.com
+- Dominio `divinittys.cl` con DNS apuntando al VPS
+- SSH key configurada en Vultr
+
+## Paso 1 — Crear VPS en Vultr
+
+En la UI de Vultr: **Deploy New Server**
+
+| Campo | Valor |
+|---|---|
+| Type | Cloud Compute — Shared CPU |
+| Location | Santiago (si disponible) o São Paulo |
+| Image | Ubuntu 22.04 LTS |
+| Plan | Regular — **2 vCPU, 4GB RAM** ($24/mes) |
+| SSH Key | Agregar tu clave pública |
+| Hostname | divinittys-prod |
+
+> ⚠️ **2GB RAM** es insuficiente para Next.js + PostgreSQL + Meilisearch corriendo juntos.
+
+## Paso 2 — Configurar DNS
+
+En tu proveedor de dominio, crea estos registros **A**:
+
+```
+divinittys.cl       →  IP_DEL_VPS
+www.divinittys.cl   →  IP_DEL_VPS
+media.divinittys.cl →  IP_DEL_VPS
 ```
 
-### Comandos útiles
-```powershell
-# Ver logs de un servicio
-docker logs divinittys_app -f
-docker logs divinittys_meili -f
+Espera 5-15 min a que propague antes de continuar.
 
-# Ejecutar comandos en el contenedor
-docker exec -it divinittys_app sh
+## Paso 3 — Setup inicial del servidor (una sola vez)
 
-# Health check manual
-docker exec divinittys_app npx tsx scripts/health-check.ts
-```
-
----
-
-## ☁️ Render.com (Producción)
-
-### Paso 1: Preparar repositorio
 ```bash
-git init
-git add .
-git commit -m "feat: initial divinittys commit"
-git remote add origin https://github.com/TU_USUARIO/divinittys.git
-git push -u origin main
+# Conectar al VPS
+ssh root@IP_DEL_VPS
+
+# Ejecutar script de setup (instala Docker, UFW, Certbot, SSL)
+curl -fsSL https://raw.githubusercontent.com/rekkiem/divinittys/main/scripts/setup-vultr-server.sh | bash
 ```
 
-### Paso 2: Desplegar en Render
-1. Ir a [render.com](https://render.com) → **New → Blueprint**
-2. Conectar tu repositorio GitHub
-3. Render detectará `render.yaml` y creará automáticamente:
-   - Web Service (Next.js)
-   - PostgreSQL (managed)
-   - Redis (managed)
+## Paso 4 — Subir el código al servidor
 
-### Paso 3: Configurar variables secretas
-En el dashboard de Render, configurar manualmente:
-```
-NEXT_PUBLIC_APP_URL = https://divinittys.onrender.com
-OPENAI_API_KEY     = sk-...
-MERCADOPAGO_ACCESS_TOKEN = ...
-MEILISEARCH_URL    = https://tu-instancia.meilisearch.io
-MEILISEARCH_API_KEY = ...
-MINIO_ENDPOINT     = tu-bucket.r2.cloudflarestorage.com
-MINIO_ACCESS_KEY   = ...
-MINIO_SECRET_KEY   = ...
+```bash
+# Opción A: clonar desde GitHub (recomendado)
+git clone https://github.com/rekkiem/divinittys /opt/divinittys
+
+# Opción B: copiar desde tu máquina local (Windows)
+scp -r . root@IP_DEL_VPS:/opt/divinittys
 ```
 
-### Paso 4: Migrar base de datos
-Render ejecuta automáticamente `prisma migrate deploy` en el startup.
+## Paso 5 — Configurar secrets
 
-### Costos estimados (Render)
-| Servicio | Plan | Costo/mes |
+```bash
+# En tu máquina local, generar secrets:
+bash scripts/generate-secrets.sh
+
+# Luego en el servidor:
+cd /opt/divinittys
+cp .env.example .env.production
+nano .env.production   # reemplazar todos los __CHANGE_ME__
+```
+
+Variables obligatorias a reemplazar:
+
+```bash
+POSTGRES_PASSWORD=  # del script generate-secrets.sh
+REDIS_PASSWORD=     # del script
+MEILI_MASTER_KEY=   # del script
+MINIO_SECRET_KEY=   # del script
+JWT_SECRET=         # del script (128 chars hex)
+JWT_REFRESH_SECRET= # del script (diferente al anterior)
+```
+
+## Paso 6 — Primer deploy
+
+```bash
+cd /opt/divinittys
+bash scripts/deploy-vultr.sh --first-time
+```
+
+El flag `--first-time` ejecuta migraciones, seed de datos, setup de MinIO e indexación de Meilisearch.
+
+## Paso 7 — Verificar
+
+```bash
+# Estado de todos los contenedores
+docker compose -f docker-compose.prod.yml ps
+
+# Health check
+curl https://divinittys.cl/api/health
+# Esperado: {"status":"healthy"} o {"status":"degraded"}
+
+# Logs en tiempo real
+docker compose -f docker-compose.prod.yml logs -f app
+```
+
+## Redeploy (actualizaciones futuras)
+
+```bash
+# En el servidor, desde /opt/divinittys
+bash scripts/deploy-vultr.sh
+```
+
+## Comandos útiles en producción
+
+```bash
+# Ver logs de un servicio específico
+docker compose -f docker-compose.prod.yml logs -f postgres
+docker compose -f docker-compose.prod.yml logs -f meilisearch
+
+# Entrar al contenedor de la app
+docker compose -f docker-compose.prod.yml exec app sh
+
+# Correr migraciones manualmente
+docker compose -f docker-compose.prod.yml exec app npx prisma migrate deploy
+
+# Backup de la base de datos
+docker compose -f docker-compose.prod.yml exec postgres \
+  pg_dump -U divinittys divinittys > backup_$(date +%Y%m%d).sql
+
+# Restaurar backup
+cat backup.sql | docker compose -f docker-compose.prod.yml exec -T postgres \
+  psql -U divinittys divinittys
+
+# Fix emergencia (403, productos inactivos)
+docker compose -f docker-compose.prod.yml exec app npx tsx scripts/fixDeploy.ts
+```
+
+## Troubleshooting
+
+### App no inicia — OOM killed
+```bash
+free -h   # verificar RAM disponible
+# Si < 500MB libre → upgrade a plan 4GB
+```
+
+### SSL no funciona
+```bash
+# Verificar DNS propaga
+dig divinittys.cl +short
+
+# Re-emitir certificado
+certbot certonly --standalone -d divinittys.cl -d www.divinittys.cl -d media.divinittys.cl
+docker compose -f docker-compose.prod.yml restart nginx
+```
+
+### Imágenes no cargan (403 admin)
+```bash
+docker compose -f docker-compose.prod.yml exec app npx tsx scripts/fixDeploy.ts
+# Luego: cerrar sesión en navegador → limpiar localStorage → relogin
+```
+
+## Costo estimado Vultr
+
+| Recurso | Plan | Costo/mes |
 |---|---|---|
-| Web Service | Starter | $7 |
-| PostgreSQL | Starter | $7 |
-| Redis | Starter | $10 |
-| **Total** | | **~$24/mes** |
-
----
-
-## 🔍 Meilisearch en Producción
-
-### Opción A: Meilisearch Cloud (Recomendado)
-1. Crear cuenta en [cloud.meilisearch.com](https://cloud.meilisearch.com)
-2. Crear proyecto → obtener URL y API Key
-3. Configurar en Render:
-   ```
-   MEILISEARCH_URL = https://ms-xxx.meilisearch.io
-   MEILISEARCH_API_KEY = tu_master_key
-   ```
-
-### Opción B: Self-hosted en Render
-- Añadir servicio en render.yaml con imagen `getmeili/meilisearch:v1.6`
-
----
-
-## 🧪 Tests
-
-```bash
-# Ejecutar suite completa
-npm run test
-
-# Solo smoke tests (requiere servicios corriendo)
-npm run test:smoke
-
-# Con cobertura
-npm run test:coverage
-
-# Health check manual
-npm run health
-```
-
----
-
-## 📦 Variables de Entorno Requeridas
-
-| Variable | Local | Producción | Descripción |
-|---|---|---|---|
-| `DATABASE_URL` | Auto (Docker) | Render DB | Conexión PostgreSQL |
-| `REDIS_URL` | Auto (Docker) | Render Redis | Conexión Redis |
-| `JWT_SECRET` | Incluido | Generar | Clave JWT (32+ chars) |
-| `MEILISEARCH_URL` | `http://meilisearch:7700` | Cloud URL | Motor de búsqueda |
-| `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` | URL pública | URL de la app |
-| `OPENAI_API_KEY` | Opcional | Opcional | IA (mock sin clave) |
-| `TRANSBANK_*` | Test incluidas | Cambiar en prod | Webpay |
+| VPS 2vCPU/4GB | Regular Cloud | ~$24 |
+| Backups automáticos | 20% del VPS | ~$5 |
+| Ancho de banda | 3TB incluido | $0 |
+| **Total** | | **~$29/mes** |

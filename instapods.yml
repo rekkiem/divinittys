@@ -1,0 +1,91 @@
+# ============================================================
+# DIVINITTYS — InstaPods Configuration
+# Docs: https://instapods.com/docs
+# Deploy: instapods deploy divinittys --config instapods.yml
+# ============================================================
+
+name: divinittys
+version: "1"
+
+# ── Cápsula principal: Next.js App ───────────────────────────
+capsules:
+  app:
+    preset: nodejs
+    build:
+      dockerfile: Dockerfile
+      target: production          # usa el stage de producción (node server.js)
+      args:
+        NEXT_TELEMETRY_DISABLED: "1"
+    start:
+      command: node server.js
+    port: 3000
+    domain: divinittys.cl         # dominio real desde .env.production
+    health_check:
+      path: /api/health
+      interval: 20
+      timeout: 10
+      grace_period: 40
+      # 200 = ok/degraded, 503 = DB down
+    resources:
+      cpu: shared
+      memory: 512
+    env_file: .env.production     # lee las vars del archivo
+    scaling:
+      min: 1
+      max: 3
+
+  # ── PostgreSQL ──────────────────────────────────────────────
+  postgres:
+    preset: postgres
+    version: "16"
+    resources:
+      memory: 256
+    volumes:
+      - /var/lib/postgresql/data
+    env:
+      POSTGRES_USER: divinittys
+      POSTGRES_DB: divinittys
+      # POSTGRES_PASSWORD → definir en secrets
+
+  # ── Redis ───────────────────────────────────────────────────
+  redis:
+    preset: redis
+    version: "7"
+    resources:
+      memory: 128
+    volumes:
+      - /data
+
+  # ── Meilisearch ─────────────────────────────────────────────
+  meilisearch:
+    image: getmeili/meilisearch:v1.6
+    port: 7700
+    resources:
+      memory: 512
+    volumes:
+      - /meili_data
+    env:
+      MEILI_ENV: production
+      MEILI_DB_PATH: /meili_data
+      MEILI_NO_ANALYTICS: "true"
+      # MEILI_MASTER_KEY → definir en secrets
+
+  # ── MinIO ───────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    port: 9000
+    command: server /data --console-address :9001
+    resources:
+      memory: 256
+    volumes:
+      - /data
+    env:
+      # MINIO_ROOT_USER / MINIO_ROOT_PASSWORD → definir en secrets
+
+# ── Red interna entre cápsulas ───────────────────────────────
+network:
+  internal:
+    - app → postgres
+    - app → redis
+    - app → meilisearch
+    - app → minio
