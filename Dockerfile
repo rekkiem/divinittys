@@ -1,6 +1,6 @@
 # ============================================================
 # DIVINITTYS - Dockerfile multi-stage
-# Stages: base -> deps -> development -> migrator -> builder -> production
+# Stages: base -> deps -> development -> migrator -> tools -> builder -> production
 # ============================================================
 
 FROM node:20-alpine AS base
@@ -30,6 +30,18 @@ RUN npx prisma generate
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 CMD ["sh", "-c", "npx prisma migrate deploy && npx tsx prisma/seed.ts"]
+
+# Operational tooling image for one-off imports and maintenance scripts.
+# Keeps devDependencies (including tsx) and repository scripts isolated from
+# the lean production runtime image.
+FROM base AS tools
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npx prisma generate
+RUN mkdir -p /app/imports
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+CMD ["sh"]
 
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
