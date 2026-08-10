@@ -47,3 +47,6 @@ dist/
 #   - Reproducible installs across environments
 #   - Security audits (npm audit)
 # ─────────────────────────────────────────────────────────────────
+.env.production
+.env
+.env.*
