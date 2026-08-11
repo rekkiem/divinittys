@@ -15,7 +15,7 @@ build/
 .env.test.local
 .env.production.local
 .env.production
-.env.*
+.env*
 
 # Operational import files (never commit customer/product exports)
 imports/
