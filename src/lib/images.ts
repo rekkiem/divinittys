@@ -58,7 +58,8 @@ export function normalizeProductMedia<T extends ProductMediaLike>(product: T): T
           url: normalizeImageUrl(image.url),
         }))
       : product.images,
-  };
+
+  } as T;
 }
 
 export function normalizeProductsMedia<T extends ProductMediaLike>(products: T[]): T[] {

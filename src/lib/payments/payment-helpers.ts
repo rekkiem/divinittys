@@ -31,7 +31,7 @@ export async function markPaymentFailed(params: {
   paymentId: string;
   orderId: string;
   reason: string;
-  responseData?: Prisma.InputJsonValue;
+  responseData?: any;
 }) {
   await prisma.$transaction(async (tx) => {
     const existing = await tx.payment.findUnique({
@@ -72,7 +72,7 @@ export async function markPaymentFailed(params: {
 export async function markPaymentPaid(params: {
   paymentId: string;
   orderId: string;
-  responseData: Prisma.InputJsonValue;
+  responseData: Record<string, unknown> | unknown[] | string | number | boolean | null;
   externalId?: string | null;
   authCode?: string | null;
   installments?: number;
@@ -126,7 +126,7 @@ export async function markPaymentPaid(params: {
         authCode: params.authCode ?? undefined,
         installments: params.installments ?? 1,
         paymentMethod: params.paymentMethod ?? undefined,
-        responseData: params.responseData,
+        responseData: params.responseData as any,
         errorMessage: null,
       },
     });
