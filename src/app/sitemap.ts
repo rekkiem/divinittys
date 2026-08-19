@@ -1,4 +1,3 @@
-
 export const dynamic = 'force-dynamic';
 
 import { MetadataRoute } from 'next';
@@ -13,14 +12,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   return [
     { url: base, lastModified: new Date(), changeFrequency: 'daily', priority: 1 },
-
     ...products.map((product: { slug: string; updatedAt: Date }) => ({
       url: `${base}/productos/${product.slug}`,
       lastModified: product.updatedAt,
       changeFrequency: 'daily' as const,
       priority: 0.8,
     })),
-
     ...categories.map((category: { slug: string; updatedAt: Date }) => ({
       url: `${base}/productos?category=${category.slug}`,
       lastModified: category.updatedAt,

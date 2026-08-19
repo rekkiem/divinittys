@@ -17,10 +17,6 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 log()  { echo -e "${GREEN}✅${NC} $1"; }
 warn() { echo -e "${YELLOW}⚠️ ${NC} $1"; }
 
-
-
-# ── Levantar infraestructura primero ─────────────────────────
-
 if [ -z "$BRANCH" ]; then
   echo -e "${RED}❌ No se pudo determinar la rama actual${NC}"
   exit 1
@@ -53,8 +49,6 @@ $COMPOSE up -d postgres redis meilisearch minio
 echo "   Esperando que los servicios estén healthy..."
 sleep 20
 
-
-# ── Migraciones ───────────────────────────────────────────────
 echo ""
 echo "🗃️ Ejecutando migraciones Prisma..."
 $COMPOSE run --rm app sh -c "npx prisma@6.2.1 migrate deploy"
@@ -64,7 +58,6 @@ if [ "$FIRST_TIME" = "--first-time" ]; then
   echo ""
   echo "🌱 Cargando datos iniciales..."
   $COMPOSE run --rm app sh -c "npx tsx prisma/seed.ts"
-
   log "Seed completado"
 
   echo ""
@@ -76,23 +69,15 @@ if [ "$FIRST_TIME" = "--first-time" ]; then
   $COMPOSE run --rm app sh -c "npx tsx scripts/reindex-search.ts" || warn "Indexación omitida (sin productos)"
 fi
 
-
-# ── Deploy app + nginx ────────────────────────────────────────
-
 echo ""
 echo "🌐 Desplegando app y nginx..."
 $COMPOSE up -d app nginx certbot
 log "Todos los servicios levantados"
 
-
-# ── Verificación final ────────────────────────────────────────
 echo ""
 echo "🔍 Verificando estado..."
 sleep 10
 $COMPOSE ps
-
-
-echo ""
 
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/api/health 2>/dev/null || echo "000")
 if [ "$HTTP_CODE" = "200" ]; then
@@ -110,11 +95,4 @@ echo ""
 echo "  🌐 https://divinittys.cl"
 echo "  🔒 https://divinittys.cl/admin"
 echo "  📦 https://media.divinittys.cl"
-
-echo ""
-echo "  Comandos útiles:"
-echo "  docker compose -f docker-compose.prod.yml logs -f app"
-echo "  docker compose -f docker-compose.prod.yml ps"
-echo "  bash scripts/deploy-vultr.sh   # redeploy rápido"
-
 echo "════════════════════════════════════════════════════"
