@@ -4,8 +4,6 @@
 # Uso: docker compose -f docker-compose.prod.yml --env-file .env.production up -d
 # ============================================================
 
-version: "3.8"
-
 networks:
   divinittys_net:
     driver: bridge
@@ -19,8 +17,6 @@ volumes:
   certbot_www:
 
 services:
-
-  # ── Nginx (reverse proxy + SSL) ──────────────────────────
   nginx:
     image: nginx:alpine
     container_name: divinittys_nginx
@@ -38,8 +34,6 @@ services:
     networks:
       - divinittys_net
 
-
-  # ── Certbot (renovación SSL automática) ──────────────────
   certbot:
     image: certbot/certbot
     container_name: divinittys_certbot
@@ -55,8 +49,6 @@ services:
     networks:
       - divinittys_net
 
-
-  # ── Next.js App ──────────────────────────────────────────
   app:
     build:
       context: .
@@ -94,8 +86,6 @@ services:
       retries: 5
       start_period: 60s
 
-
-  # ── PostgreSQL ───────────────────────────────────────────
   # One-off administrative tooling. Not started by the normal stack.
   # Use: docker compose ... run --rm importer ...
   importer:
@@ -140,7 +130,6 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     environment:
-
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
@@ -154,8 +143,6 @@ services:
       retries: 10
       start_period: 20s
 
-
-  # ── Redis ────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: divinittys_redis
@@ -176,8 +163,6 @@ services:
       timeout: 5s
       retries: 10
 
-
-  # ── Meilisearch ──────────────────────────────────────────
   meilisearch:
     image: getmeili/meilisearch:v1.6
     container_name: divinittys_meili
@@ -198,8 +183,6 @@ services:
       retries: 10
       start_period: 20s
 
-
-  # ── MinIO (almacenamiento imágenes) ──────────────────────
   minio:
     image: minio/minio:latest
     container_name: divinittys_minio
@@ -211,7 +194,6 @@ services:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
       MINIO_SITE_NAME: divinittys
-
     networks:
       - divinittys_net
     healthcheck:

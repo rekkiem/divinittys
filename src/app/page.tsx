@@ -86,7 +86,6 @@ export default async function HomePage() {
         <FeaturedCategories categories={categories} />
 
         {onSaleProducts.length > 0 && (
-
           <OffersBanner products={onSaleProducts as any} />
         )}
 

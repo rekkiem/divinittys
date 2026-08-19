@@ -20,7 +20,6 @@ build/
 # Operational import files (never commit customer/product exports)
 imports/
 
-
 # Logs
 *.log
 npm-debug.log*
