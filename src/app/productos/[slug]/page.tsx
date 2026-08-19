@@ -72,7 +72,8 @@ export default async function ProductPage({ params }: { params: { slug: string }
 
         {normalizedRelated.length > 0 && (
           <div className="border-t border-champagne-200 mt-16 pt-4">
-            <FeaturedProducts products={normalizedRelated} title="Productos Relacionados" />
+
+            <FeaturedProducts products={normalizedRelated as any} title="Productos Relacionados" />
           </div>
         )}
       </main>

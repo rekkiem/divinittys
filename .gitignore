@@ -14,6 +14,12 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.production
+.env*
+
+# Operational import files (never commit customer/product exports)
+imports/
+
 
 # Logs
 *.log

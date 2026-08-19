@@ -86,11 +86,12 @@ export default async function HomePage() {
         <FeaturedCategories categories={categories} />
 
         {onSaleProducts.length > 0 && (
-          <OffersBanner products={onSaleProducts} />
+
+          <OffersBanner products={onSaleProducts as any} />
         )}
 
         <Suspense fallback={<div className="h-96 shimmer" />}>
-          <FeaturedProducts products={featuredProducts} title="Destacados" />
+          <FeaturedProducts products={featuredProducts as any} title="Destacados" />
         </Suspense>
 
         <BeautyAssistantBanner />
