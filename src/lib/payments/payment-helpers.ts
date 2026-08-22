@@ -55,6 +55,7 @@ export async function markPaymentFailed(params: {
     await tx.order.update({
       where: { id: params.orderId },
       data: {
+        status: 'CANCELLED',
         paymentStatus: 'FAILED',
       },
     });
