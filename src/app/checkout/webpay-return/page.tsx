@@ -1,15 +1,18 @@
 'use client';
+
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import Navbar from '@/components/layout/Navbar';
+import { useCartStore } from '@/hooks/useCart';
 
 export default function WebpayReturnPage() {
-  const [status, setStatus] = useState<'loading'|'success'|'error'>('loading');
+  const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [orderNumber, setOrderNumber] = useState('');
   const [message, setMessage] = useState('');
   const params = useSearchParams();
   const router = useRouter();
+  const clearCart = useCartStore((s) => s.clearCart);
   const tokenWs = params?.get('token_ws');
   const tbkToken = params?.get('TBK_TOKEN');
   const tbkOrdenCompra = params?.get('TBK_ORDEN_COMPRA');
@@ -23,7 +26,7 @@ export default function WebpayReturnPage() {
         return;
       }
 
-      const res  = await fetch('/api/payments?action=webpay-commit', {
+      const res = await fetch('/api/payments?action=webpay-commit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token_ws: tokenWs }),
@@ -33,6 +36,8 @@ export default function WebpayReturnPage() {
       if (data.data?.success) {
         setStatus('success');
         setOrderNumber(data.data.orderNumber);
+        // Solo vaciar carrito cuando el pago está confirmado
+        clearCart();
       } else {
         setStatus('error');
         setMessage(data.data?.message || data.error || 'El pago no pudo procesarse.');
@@ -43,7 +48,7 @@ export default function WebpayReturnPage() {
       setStatus('error');
       setMessage('Error de conexión al confirmar el pago.');
     });
-  }, [tokenWs, tbkToken, tbkOrdenCompra]);
+  }, [tokenWs, tbkToken, tbkOrdenCompra, clearCart]);
 
   return (
     <div className="min-h-screen bg-champagne-50/30">
@@ -60,8 +65,12 @@ export default function WebpayReturnPage() {
           <>
             <CheckCircle2 className="w-20 h-20 text-emerald-500 mx-auto mb-6" />
             <h1 className="font-display text-3xl text-charcoal-700 mb-2">¡Pago exitoso!</h1>
-            <p className="font-sans text-charcoal-500 mb-2">Pedido: <strong>{orderNumber}</strong></p>
-            <p className="font-sans text-charcoal-400 mb-8">Recibirás un email con los detalles de tu compra.</p>
+            <p className="font-sans text-charcoal-500 mb-2">
+              Pedido: <strong>{orderNumber}</strong>
+            </p>
+            <p className="font-sans text-charcoal-400 mb-8">
+              Recibirás un email con los detalles de tu compra.
+            </p>
             <button onClick={() => router.push('/')} className="btn-primary">
               Volver al inicio
             </button>
@@ -73,8 +82,12 @@ export default function WebpayReturnPage() {
             <h1 className="font-display text-3xl text-charcoal-700 mb-2">Pago no completado</h1>
             <p className="font-sans text-charcoal-400 mb-8">{message}</p>
             <div className="flex gap-3 justify-center">
-              <button onClick={() => router.back()} className="btn-primary">Intentar de nuevo</button>
-              <button onClick={() => router.push('/')} className="btn-secondary">Ir al inicio</button>
+              <button onClick={() => router.push('/checkout')} className="btn-primary">
+                Intentarlo de nuevo
+              </button>
+              <button onClick={() => router.push('/')} className="btn-secondary">
+                Ir al inicio
+              </button>
             </div>
           </>
         )}
