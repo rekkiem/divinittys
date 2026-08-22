@@ -5,11 +5,15 @@ import { getAuthUser } from '@/lib/auth';
 import { ok, created, badRequest, unauthorized, serverError, generateOrderNumber } from '@/lib/utils/api';
 
 const createOrderSchema = z.object({
-  items: z.array(z.object({
-    productId: z.string(),
-    variantId: z.string().optional(),
-    quantity: z.number().min(1),
-  })).min(1),
+  items: z
+    .array(
+      z.object({
+        productId: z.string(),
+        variantId: z.string().optional(),
+        quantity: z.number().min(1),
+      })
+    )
+    .min(1),
   shippingData: z.object({
     firstName: z.string(),
     lastName: z.string(),
@@ -24,6 +28,8 @@ const createOrderSchema = z.object({
   }),
   couponCode: z.string().optional(),
   shippingService: z.string().optional(),
+  // Cotización del checkout (validada con techo para evitar manipulación)
+  shippingAmount: z.number().min(0).max(50000).optional(),
   notes: z.string().optional(),
 });
 
@@ -92,8 +98,8 @@ export async function POST(req: NextRequest) {
         return badRequest(`Stock insuficiente para "${product.name}"`);
       }
 
-      const total = price * item.quantity;
-      subtotal += total;
+      const lineTotal = price * item.quantity;
+      subtotal += lineTotal;
 
       orderItems.push({
         productId: item.productId,
@@ -103,12 +109,13 @@ export async function POST(req: NextRequest) {
         image: product.images[0]?.url,
         price,
         quantity: item.quantity,
-        total,
+        total: lineTotal,
       });
     }
 
     // Validate coupon
     let discountAmount = 0;
+    let freeShippingCoupon = false;
     if (data.couponCode) {
       const coupon = await prisma.coupon.findFirst({
         where: {
@@ -134,15 +141,22 @@ export async function POST(req: NextRequest) {
             discountAmount = Math.min(Number(coupon.value), subtotal);
             break;
           case 'FREE_SHIPPING':
-            discountAmount = 0; // Handled in shipping
+            freeShippingCoupon = true;
             break;
         }
       }
     }
 
-    // Shipping cost (simplified)
+    // Shipping: preferir cotización del checkout; fallback fijo
     const freeShippingThreshold = 50000;
-    const shippingAmount = subtotal >= freeShippingThreshold ? 0 : 3990;
+    let shippingAmount: number;
+    if (freeShippingCoupon || subtotal >= freeShippingThreshold) {
+      shippingAmount = 0;
+    } else if (typeof data.shippingAmount === 'number') {
+      shippingAmount = data.shippingAmount;
+    } else {
+      shippingAmount = 3990;
+    }
 
     const total = subtotal - discountAmount + shippingAmount;
 
@@ -160,7 +174,13 @@ export async function POST(req: NextRequest) {
           guestEmail: !user ? data.shippingData.email : undefined,
           shippingData: data.shippingData,
           couponCode: data.couponCode,
-          notes: data.notes,
+          notes: data.notes
+            ? data.shippingService
+              ? `${data.notes} | Envío: ${data.shippingService}`
+              : data.notes
+            : data.shippingService
+              ? `Envío: ${data.shippingService}`
+              : undefined,
           items: { create: orderItems },
           payment: {
             create: {

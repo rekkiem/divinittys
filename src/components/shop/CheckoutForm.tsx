@@ -13,12 +13,12 @@ type ShippingQuote = {
   price: number;
   days: number;
   service: string;
+  serviceCode?: string;
 };
 
 export default function CheckoutForm() {
   const router = useRouter();
   const { items, total } = useCartStore();
-  const [step, setStep] = useState<'contact' | 'shipping' | 'payment'>('contact');
   const [loading, setLoading] = useState(false);
   const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(null);
   const [quoting, setQuoting] = useState(false);
@@ -78,24 +78,44 @@ export default function CheckoutForm() {
 
   const quoteShipping = async () => {
     if (!form.commune || !form.region) {
-      toast.error('Ingresa tu dirección primero');
+      toast.error('Ingresa comuna y región primero');
       return;
     }
     setQuoting(true);
     try {
-      const res = await fetch('/api/shipping', {
+      const res = await fetch('/api/shipping?action=quote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'quote',
-          destination: { commune: form.commune, region: form.region },
-          weight: items.reduce((s, _) => s + 0.5, 0),
+          destination: {
+            street: form.street || '',
+            number: form.number || '',
+            apartment: form.apartment,
+            commune: form.commune,
+            city: form.city || form.commune,
+            region: form.region,
+            postalCode: form.postalCode,
+          },
+          items: items.map(() => ({ quantity: 1, weight: 0.5 })),
         }),
       });
       const data = await res.json();
-      setShippingQuote(data.data || { price: 4990, days: 3, service: 'Bluexpress Estándar' });
+      const payload = data.data || data;
+
+      // API puede devolver quotes[] o campos planos
+      const first =
+        Array.isArray(payload.quotes) && payload.quotes.length > 0
+          ? payload.quotes[0]
+          : payload;
+
+      setShippingQuote({
+        price: Number(first.price ?? 3990),
+        days: Number(first.days ?? first.estimatedDays ?? 3),
+        service: first.service || first.serviceName || 'Bluexpress Estándar',
+        serviceCode: first.serviceCode,
+      });
     } catch {
-      setShippingQuote({ price: 4990, days: 3, service: 'Bluexpress Estándar' });
+      setShippingQuote({ price: 3990, days: 3, service: 'Bluexpress Estándar' });
     } finally {
       setQuoting(false);
     }
@@ -108,6 +128,7 @@ export default function CheckoutForm() {
       const orderRes = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           items: items.map((i) => ({
             productId: i.id,
@@ -126,6 +147,8 @@ export default function CheckoutForm() {
             phone: form.phone,
             email: form.email,
           },
+          shippingAmount: shippingQuote?.price,
+          shippingService: shippingQuote?.service,
         }),
       });
       const orderData = await orderRes.json();
@@ -154,7 +177,6 @@ export default function CheckoutForm() {
 
       // NO clearCart aquí: solo se vacía en mp-return / webpay-return si el pago confirma
       if (paymentMethod === 'WEBPAY' && payData.data?.url) {
-        // Webpay requires form POST, not redirect
         const formEl = document.createElement('form');
         formEl.method = 'POST';
         formEl.action = payData.data.url;
@@ -169,7 +191,6 @@ export default function CheckoutForm() {
         paymentMethod === 'MERCADOPAGO' &&
         (payData.data?.sandboxInitPoint || payData.data?.init_point || payData.data?.initPoint)
       ) {
-        // Preferir sandbox cuando hay tokens TEST-
         window.location.href =
           payData.data.sandboxInitPoint || payData.data.init_point || payData.data.initPoint;
       } else {
@@ -199,9 +220,7 @@ export default function CheckoutForm() {
 
   return (
     <div className="grid lg:grid-cols-3 gap-8">
-      {/* Form */}
       <div className="lg:col-span-2 space-y-6">
-        {/* Contact */}
         <div className="bg-white rounded-2xl border border-champagne-200 p-6">
           <h3 className="font-sans font-bold text-charcoal-700 mb-5 flex items-center gap-2">
             <User className="w-4 h-4 text-primary-500" />
@@ -223,7 +242,6 @@ export default function CheckoutForm() {
           </div>
         </div>
 
-        {/* Shipping Address */}
         <div className="bg-white rounded-2xl border border-champagne-200 p-6">
           <h3 className="font-sans font-bold text-charcoal-700 mb-5 flex items-center gap-2">
             <MapPin className="w-4 h-4 text-primary-500" />
@@ -261,7 +279,6 @@ export default function CheckoutForm() {
             </div>
           </div>
 
-          {/* Shipping quote */}
           <div className="mt-4 flex items-center gap-3">
             <button
               onClick={quoteShipping}
@@ -284,7 +301,6 @@ export default function CheckoutForm() {
           </div>
         </div>
 
-        {/* Payment */}
         <div className="bg-white rounded-2xl border border-champagne-200 p-6">
           <h3 className="font-sans font-bold text-charcoal-700 mb-5 flex items-center gap-2">
             <CreditCard className="w-4 h-4 text-primary-500" />
@@ -305,9 +321,11 @@ export default function CheckoutForm() {
                 }`}
               >
                 <div className="flex items-start justify-between">
-                  <div className={`w-4 h-4 rounded-full border-2 mt-0.5 flex items-center justify-center ${
-                    paymentMethod === method.id ? 'border-primary-500' : 'border-charcoal-300'
-                  }`}>
+                  <div
+                    className={`w-4 h-4 rounded-full border-2 mt-0.5 flex items-center justify-center ${
+                      paymentMethod === method.id ? 'border-primary-500' : 'border-charcoal-300'
+                    }`}
+                  >
                     {paymentMethod === method.id && <div className="w-2 h-2 rounded-full bg-primary-500" />}
                   </div>
                   {method.badge && (
@@ -329,7 +347,6 @@ export default function CheckoutForm() {
         </div>
       </div>
 
-      {/* Order Summary */}
       <div className="lg:col-span-1">
         <div className="sticky top-24 bg-white rounded-2xl border border-champagne-200 p-6 space-y-5">
           <h3 className="font-sans font-bold text-charcoal-700">Resumen del pedido</h3>
