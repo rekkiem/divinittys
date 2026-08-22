@@ -61,6 +61,7 @@ export async function cancelAbandonedOrders(options?: {
     select: {
       id: true,
       orderNumber: true,
+      notes: true,
       payment: { select: { id: true, status: true } },
     },
     take: limit,
@@ -68,37 +69,32 @@ export async function cancelAbandonedOrders(options?: {
   });
 
   const cancelledIds: string[] = [];
+  const marker = 'Auto-cancelado: pago abandonado';
 
   for (const order of candidates) {
     try {
       await prisma.$transaction(async (tx) => {
-        // Re-check inside transaction to avoid races with a concurrent payment
         const fresh = await tx.order.findUnique({
           where: { id: order.id },
-          select: { status: true, paymentStatus: true },
+          select: { status: true, paymentStatus: true, notes: true },
         });
 
         if (!fresh || fresh.status !== 'PENDING') return;
         if (fresh.paymentStatus === 'PAID') return;
+
+        const notes =
+          !fresh.notes || fresh.notes.includes(marker)
+            ? fresh.notes || marker
+            : `${fresh.notes} | ${marker}`;
 
         await tx.order.update({
           where: { id: order.id },
           data: {
             status: 'CANCELLED',
             paymentStatus: 'CANCELLED',
-            notes: Prisma.DbNull, // keep existing notes if any — updated below via raw path
+            notes,
           },
         });
-
-        // Append reason without wiping existing notes
-        await tx.$executeRaw`
-          UPDATE orders
-          SET notes = CASE
-            WHEN notes IS NULL OR notes = '' THEN ${'Auto-cancelado: pago abandonado'}
-            ELSE notes || ${' | Auto-cancelado: pago abandonado'}
-          END
-          WHERE id = ${order.id}
-        `;
 
         if (order.payment?.id) {
           await tx.payment.updateMany({
