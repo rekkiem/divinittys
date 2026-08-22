@@ -12,11 +12,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { createWebpayTransaction, commitWebpayTransaction } from '@/lib/payments/webpay';
-import { createMPPreference } from '@/lib/payments/mercadopago';
+import { createMPPreference, isSandbox } from '@/lib/payments/mercadopago';
 import { markPaymentFailed, markPaymentPaid } from '@/lib/payments/payment-helpers';
 import { verifyMercadoPagoSignature } from '@/lib/payments/mercadopago-webhook';
 import { ok, badRequest, notFound, serverError } from '@/lib/utils/api';
-import { getAuthUser } from '@/lib/auth';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -150,12 +149,18 @@ export async function POST(req: NextRequest) {
         data: { externalId: mp.id, status: 'PROCESSING' },
       });
 
+      // Elegir URL según credencial (TEST- vs APP_USR-), no según NODE_ENV
+      const checkoutUrl = isSandbox()
+        ? (mp.sandbox_init_point || mp.init_point)
+        : (mp.init_point || mp.sandbox_init_point);
+
       return ok({
-        preferenceId:    mp.id,
-        initPoint:       mp.init_point,
+        preferenceId:     mp.id,
+        initPoint:        mp.init_point,
         sandboxInitPoint: mp.sandbox_init_point,
-        // CheckoutForm uses init_point key
-        init_point:      process.env.NODE_ENV === 'production' ? mp.init_point : mp.sandbox_init_point,
+        // CheckoutForm lee init_point / sandboxInitPoint
+        init_point:       checkoutUrl,
+        isSandbox:        isSandbox(),
       });
     }
 
