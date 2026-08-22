@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
@@ -17,7 +17,7 @@ type ShippingQuote = {
 
 export default function CheckoutForm() {
   const router = useRouter();
-  const { items, total, clearCart } = useCartStore();
+  const { items, total } = useCartStore();
   const [step, setStep] = useState<'contact' | 'shipping' | 'payment'>('contact');
   const [loading, setLoading] = useState(false);
   const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(null);
@@ -36,6 +36,28 @@ export default function CheckoutForm() {
     region: '',
     postalCode: '',
   });
+
+  // Precargar datos del usuario logueado (no vaciar campos si ya escribió)
+  useEffect(() => {
+    const loadUser = async () => {
+      try {
+        const res = await fetch('/api/auth/me', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        const u = data.data?.user ?? data.user;
+        if (!u) return;
+        setForm((f) => ({
+          ...f,
+          name: f.name || u.name || [u.firstName, u.lastName].filter(Boolean).join(' ') || '',
+          email: f.email || u.email || '',
+          phone: f.phone || u.phone || '',
+        }));
+      } catch {
+        /* usuario no logueado */
+      }
+    };
+    loadUser();
+  }, []);
 
   const update = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -130,22 +152,26 @@ export default function CheckoutForm() {
         throw new Error(payData.error || 'Error al iniciar el pago');
       }
 
+      // NO clearCart aquí: solo se vacía en mp-return / webpay-return si el pago confirma
       if (paymentMethod === 'WEBPAY' && payData.data?.url) {
-        clearCart();
         // Webpay requires form POST, not redirect
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = payData.data.url;
+        const formEl = document.createElement('form');
+        formEl.method = 'POST';
+        formEl.action = payData.data.url;
         const input = document.createElement('input');
         input.type = 'hidden';
         input.name = 'token_ws';
         input.value = payData.data.token;
-        form.appendChild(input);
-        document.body.appendChild(form);
-        form.submit();
-      } else if (paymentMethod === 'MERCADOPAGO' && (payData.data?.init_point || payData.data?.sandboxInitPoint)) {
-        clearCart();
-        window.location.href = payData.data.init_point || payData.data.sandboxInitPoint;
+        formEl.appendChild(input);
+        document.body.appendChild(formEl);
+        formEl.submit();
+      } else if (
+        paymentMethod === 'MERCADOPAGO' &&
+        (payData.data?.sandboxInitPoint || payData.data?.init_point || payData.data?.initPoint)
+      ) {
+        // Preferir sandbox cuando hay tokens TEST-
+        window.location.href =
+          payData.data.sandboxInitPoint || payData.data.init_point || payData.data.initPoint;
       } else {
         throw new Error('No se pudo iniciar el pago. Verifique que el pedido se creó correctamente.');
       }
