@@ -15,7 +15,6 @@ import {
 } from '@/lib/auth';
 import { ok, badRequest, unauthorized, serverError, conflict } from '@/lib/utils/api';
 
-// ---- Register ----
 const registerSchema = z.object({
   name: z.string().min(2).max(100),
   email: z.string().email(),
@@ -32,8 +31,10 @@ export async function POST(req: NextRequest) {
 
   try {
     if (action === 'register') {
-      const limit = rateLimit(req, { key: 'auth-register', limit: 5, windowMs: 15 * 60 * 1000 });
-      if (!limit.allowed) return badRequest('Demasiados intentos de registro. Intenta nuevamente en unos minutos.');
+      const limit = await rateLimit(req, { key: 'auth-register', limit: 5, windowMs: 15 * 60 * 1000 });
+      if (!limit.allowed) {
+        return badRequest('Demasiados intentos de registro. Intenta nuevamente en unos minutos.');
+      }
 
       const body = await req.json();
       const parsed = registerSchema.parse(body);
@@ -58,8 +59,16 @@ export async function POST(req: NextRequest) {
         select: { id: true, email: true, name: true, role: true },
       });
 
-      const accessToken = await signAccessToken({ userId: user.id, email: user.email, role: user.role });
-      const refreshToken = await signRefreshToken({ userId: user.id, email: user.email, role: user.role });
+      const accessToken = await signAccessToken({
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+      });
+      const refreshToken = await signRefreshToken({
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+      });
 
       await prisma.session.create({
         data: {
@@ -77,14 +86,18 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'login') {
-      const limit = rateLimit(req, { key: 'auth-login', limit: 10, windowMs: 15 * 60 * 1000 });
-      if (!limit.allowed) return badRequest('Demasiados intentos de inicio de sesión. Espera unos minutos.');
+      const limit = await rateLimit(req, { key: 'auth-login', limit: 10, windowMs: 15 * 60 * 1000 });
+      if (!limit.allowed) {
+        return badRequest('Demasiados intentos de inicio de sesión. Espera unos minutos.');
+      }
 
       const body = await req.json();
-      const parsed = z.object({
-        email: z.string().email(),
-        password: z.string(),
-      }).parse(body);
+      const parsed = z
+        .object({
+          email: z.string().email(),
+          password: z.string(),
+        })
+        .parse(body);
       const email = sanitizeEmail(parsed.email);
       const password = parsed.password;
 
@@ -94,16 +107,22 @@ export async function POST(req: NextRequest) {
       const valid = await bcrypt.compare(password, user.passwordHash);
       if (!valid) return unauthorized('Credenciales inválidas');
 
-      const accessToken = await signAccessToken({ userId: user.id, email: user.email, role: user.role });
-      const refreshToken = await signRefreshToken({ userId: user.id, email: user.email, role: user.role });
+      const accessToken = await signAccessToken({
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+      });
+      const refreshToken = await signRefreshToken({
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+      });
 
+      // Solo limpia sesiones expiradas (no otras sesiones válidas del usuario)
       await prisma.session.deleteMany({
         where: {
           userId: user.id,
-          OR: [
-            { expiresAt: { lt: new Date() } },
-            { userAgent: req.headers.get('user-agent') || undefined, ipAddress },
-          ],
+          expiresAt: { lt: new Date() },
         },
       });
 
@@ -117,18 +136,32 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      const userData = { id: user.id, email: user.email, name: user.name, role: user.role, avatar: user.avatar };
+      const userData = {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        avatar: user.avatar,
+      };
       const res = ok({ user: userData, accessToken });
       setAuthCookies(res as NextResponse, accessToken, refreshToken);
       return res;
     }
 
     if (action === 'logout') {
-      const token = getTokenFromRequest(req);
-      if (token) {
-        const payload = await verifyAccessToken(token);
-        if (payload) {
-          await prisma.session.deleteMany({ where: { userId: payload.userId } });
+      // Preferir borrar SOLO la sesión actual (refresh cookie)
+      const refreshToken = req.cookies.get('refresh_token')?.value;
+      if (refreshToken) {
+        await prisma.session.deleteMany({ where: { refreshToken } });
+      } else {
+        // Fallback: si no hay refresh cookie, intentar por access token (sesión única)
+        const token = getTokenFromRequest(req);
+        if (token) {
+          const payload = await verifyAccessToken(token);
+          if (payload) {
+            // Sin refresh: no borramos todas las sesiones de todos los dispositivos
+            // Solo limpiamos cookies del request actual
+          }
         }
       }
       const res = ok({ message: 'Sesión cerrada' });
