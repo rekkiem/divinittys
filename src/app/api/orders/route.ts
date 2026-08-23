@@ -3,6 +3,11 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { getAuthUser } from '@/lib/auth';
 import { ok, created, badRequest, unauthorized, serverError, generateOrderNumber } from '@/lib/utils/api';
+import { quoteBluexpress, calculatePackageFromOrder } from '@/lib/shipping/bluexpress';
+
+const MAX_SHIPPING_CLP = 15000;
+const SHIPPING_TOLERANCE = 0.15; // ±15%
+const FREE_SHIPPING_THRESHOLD = 50000;
 
 const createOrderSchema = z.object({
   items: z
@@ -28,10 +33,91 @@ const createOrderSchema = z.object({
   }),
   couponCode: z.string().optional(),
   shippingService: z.string().optional(),
-  // Cotización del checkout (validada con techo para evitar manipulación)
-  shippingAmount: z.number().min(0).max(50000).optional(),
+  shippingAmount: z.number().min(0).max(MAX_SHIPPING_CLP).optional(),
   notes: z.string().optional(),
 });
+
+/** Valida o recalcula el monto de envío contra cotización server-side */
+async function resolveShippingAmount(params: {
+  clientAmount?: number;
+  shippingService?: string;
+  shippingData: z.infer<typeof createOrderSchema>['shippingData'];
+  items: { quantity: number }[];
+  freeShipping: boolean;
+}): Promise<{ amount: number; source: string }> {
+  if (params.freeShipping) {
+    return { amount: 0, source: 'free' };
+  }
+
+  // Re-cotizar en servidor
+  let serverQuotes: { price: number; serviceName: string; serviceCode: string }[] = [];
+  try {
+    const pkg = calculatePackageFromOrder(
+      params.items.map((i) => ({ quantity: i.quantity, weight: 0.5 }))
+    );
+    const quotes = await quoteBluexpress(
+      {
+        street: params.shippingData.street,
+        number: params.shippingData.number,
+        apartment: params.shippingData.apartment,
+        commune: params.shippingData.commune,
+        city: params.shippingData.city || params.shippingData.commune,
+        region: params.shippingData.region,
+      },
+      [pkg]
+    );
+    serverQuotes = quotes.map((q) => ({
+      price: Number(q.price),
+      serviceName: q.serviceName,
+      serviceCode: q.serviceCode,
+    }));
+  } catch {
+    serverQuotes = [];
+  }
+
+  const fallback = 3990;
+
+  if (typeof params.clientAmount !== 'number') {
+    return {
+      amount: serverQuotes[0]?.price ?? fallback,
+      source: serverQuotes.length ? 'server-quote' : 'fallback',
+    };
+  }
+
+  const client = params.clientAmount;
+
+  // Match por servicio si se indicó
+  let matched = serverQuotes[0];
+  if (params.shippingService && serverQuotes.length) {
+    const byName = serverQuotes.find(
+      (q) =>
+        q.serviceName === params.shippingService ||
+        q.serviceCode === params.shippingService ||
+        params.shippingService!.toLowerCase().includes(q.serviceCode.toLowerCase())
+    );
+    if (byName) matched = byName;
+  }
+
+  if (matched) {
+    const min = matched.price * (1 - SHIPPING_TOLERANCE);
+    const max = matched.price * (1 + SHIPPING_TOLERANCE);
+    if (client < min || client > max) {
+      // No confiar en el cliente: usar precio del servidor
+      return { amount: matched.price, source: 'server-override' };
+    }
+    return { amount: client, source: 'client-validated' };
+  }
+
+  // Sin cotización server usable: techo estricto + banda razonable de mock (2000-6000)
+  if (client > MAX_SHIPPING_CLP) {
+    return { amount: fallback, source: 'capped' };
+  }
+  if (client > 0 && (client < 1500 || client > 8000)) {
+    return { amount: fallback, source: 'out-of-band-fallback' };
+  }
+
+  return { amount: client, source: 'client-accepted' };
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -66,7 +152,6 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const data = createOrderSchema.parse(body);
 
-    // Fetch and validate products
     const productIds = data.items.map((i) => i.productId);
     const products = await prisma.product.findMany({
       where: { id: { in: productIds }, isActive: true },
@@ -81,7 +166,6 @@ export async function POST(req: NextRequest) {
       return badRequest('Algunos productos no están disponibles');
     }
 
-    // Calculate totals
     let subtotal = 0;
     const orderItems: any[] = [];
 
@@ -113,7 +197,6 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Validate coupon
     let discountAmount = 0;
     let freeShippingCoupon = false;
     if (data.couponCode) {
@@ -147,20 +230,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Shipping: preferir cotización del checkout; fallback fijo
-    const freeShippingThreshold = 50000;
-    let shippingAmount: number;
-    if (freeShippingCoupon || subtotal >= freeShippingThreshold) {
-      shippingAmount = 0;
-    } else if (typeof data.shippingAmount === 'number') {
-      shippingAmount = data.shippingAmount;
-    } else {
-      shippingAmount = 3990;
-    }
+    const freeShipping = freeShippingCoupon || subtotal >= FREE_SHIPPING_THRESHOLD;
+    const shipping = await resolveShippingAmount({
+      clientAmount: data.shippingAmount,
+      shippingService: data.shippingService,
+      shippingData: data.shippingData,
+      items: data.items,
+      freeShipping,
+    });
 
+    const shippingAmount = shipping.amount;
     const total = subtotal - discountAmount + shippingAmount;
 
-    // Create order
     const order = await prisma.$transaction(async (tx: any) => {
       const newOrder = await tx.order.create({
         data: {
@@ -174,13 +255,13 @@ export async function POST(req: NextRequest) {
           guestEmail: !user ? data.shippingData.email : undefined,
           shippingData: data.shippingData,
           couponCode: data.couponCode,
-          notes: data.notes
-            ? data.shippingService
-              ? `${data.notes} | Envío: ${data.shippingService}`
-              : data.notes
-            : data.shippingService
-              ? `Envío: ${data.shippingService}`
-              : undefined,
+          notes: [
+            data.notes,
+            data.shippingService ? `Envío: ${data.shippingService}` : null,
+            `shipping_source=${shipping.source}`,
+          ]
+            .filter(Boolean)
+            .join(' | '),
           items: { create: orderItems },
           payment: {
             create: {
@@ -194,7 +275,6 @@ export async function POST(req: NextRequest) {
         include: { items: true, payment: true },
       });
 
-      // Reserve stock
       for (const item of data.items) {
         if (item.variantId) {
           await tx.productVariant.update({
@@ -209,7 +289,6 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Update coupon usage
       if (data.couponCode) {
         await tx.coupon.update({
           where: { code: data.couponCode.toUpperCase() },
@@ -220,7 +299,7 @@ export async function POST(req: NextRequest) {
       return newOrder;
     });
 
-    return created({ order });
+    return created({ order, shippingSource: shipping.source });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return badRequest('Datos inválidos', error.errors);
