@@ -6,7 +6,8 @@
  * POST /api/payments?action=webpay-commit    → commit after redirect
  * POST /api/payments?action=mp-preference   → create MP preference
  * POST /api/payments                         → auto-detect from body.provider
- * GET  /api/payments                         → MercadoPago webhook (IPN)
+ * GET  /api/payments                         → MercadoPago webhook (IPN legacy)
+ * Preferencias nuevas notifican a /api/webhooks/mercadopago (POST)
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -19,7 +20,6 @@ import { ok, badRequest, notFound, serverError } from '@/lib/utils/api';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
-// ── Helpers ──────────────────────────────────────────────────────
 async function findOrderAndValidate(orderId: string) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -28,8 +28,10 @@ async function findOrderAndValidate(orderId: string) {
       items: { include: { product: { include: { images: { where: { isMain: true }, take: 1 } } } } },
     },
   });
-  if (!order)                          throw Object.assign(new Error('Pedido no encontrado'), { code: 404 });
-  if (order.payment?.status === 'PAID') throw Object.assign(new Error('Este pedido ya fue pagado'), { code: 400 });
+  if (!order) throw Object.assign(new Error('Pedido no encontrado'), { code: 404 });
+  if (order.payment?.status === 'PAID') {
+    throw Object.assign(new Error('Este pedido ya fue pagado'), { code: 400 });
+  }
   return order;
 }
 
@@ -46,20 +48,17 @@ async function ensurePaymentRecord(orderId: string, provider: string, total: num
   });
 }
 
-// ── POST handler ──────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const body = await req.json().catch(() => ({}));
 
-    // Auto-detect action: from ?action= or from body.provider
     let action = searchParams.get('action');
     if (!action) {
       const provider = String(body.provider || '').toUpperCase();
       action = provider === 'MERCADOPAGO' ? 'mp-preference' : 'webpay-init';
     }
 
-    // ── Webpay: init ─────────────────────────────────────────────
     if (action === 'webpay-init') {
       const { orderId } = z.object({ orderId: z.string() }).parse(body);
 
@@ -67,9 +66,9 @@ export async function POST(req: NextRequest) {
       const total = Number(order.total);
 
       const tbk = await createWebpayTransaction({
-        buyOrder:  order.orderNumber.slice(0, 26), // Transbank max 26 chars
+        buyOrder: order.orderNumber.slice(0, 26),
         sessionId: `${orderId.slice(0, 8)}-${Date.now()}`,
-        amount:    total,
+        amount: total,
         returnUrl: `${APP_URL}/checkout/webpay-return`,
       });
 
@@ -82,7 +81,6 @@ export async function POST(req: NextRequest) {
       return ok({ token: tbk.token, url: tbk.url });
     }
 
-    // ── Webpay: commit ───────────────────────────────────────────
     if (action === 'webpay-commit') {
       const { token_ws } = z.object({ token_ws: z.string() }).parse(body);
 
@@ -93,7 +91,8 @@ export async function POST(req: NextRequest) {
       if (!payment) return notFound('Pago no encontrado');
 
       const result = await commitWebpayTransaction(token_ws);
-      const approved = result && (result as any).response_code === 0 && (result as any).status === 'AUTHORIZED';
+      const approved =
+        result && (result as any).response_code === 0 && (result as any).status === 'AUTHORIZED';
 
       if (approved) {
         await markPaymentPaid({
@@ -117,7 +116,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── MercadoPago: preference ───────────────────────────────────
     if (action === 'mp-preference') {
       const { orderId } = z.object({ orderId: z.string() }).parse(body);
       const order = await findOrderAndValidate(orderId);
@@ -126,9 +124,9 @@ export async function POST(req: NextRequest) {
       const mp = await createMPPreference(
         {
           items: order.items.map((item: any) => ({
-            id:         item.productId,
-            title:      item.name,
-            quantity:   item.quantity,
+            id: item.productId,
+            title: item.name,
+            quantity: item.quantity,
             unit_price: Number(item.price),
             picture_url: item.product?.images?.[0]?.url,
           })),
@@ -138,7 +136,8 @@ export async function POST(req: NextRequest) {
             pending: `${APP_URL}/checkout/mp-return?status=pending&orderId=${orderId}`,
           },
           externalReference: order.orderNumber,
-          notificationUrl: `${APP_URL}/api/payments?webhook=mp`,
+          // Webhook POST dedicado (C-02)
+          notificationUrl: `${APP_URL}/api/webhooks/mercadopago`,
         },
         `divinittys-${orderId}`
       );
@@ -149,18 +148,16 @@ export async function POST(req: NextRequest) {
         data: { externalId: mp.id, status: 'PROCESSING' },
       });
 
-      // Elegir URL según credencial (TEST- vs APP_USR-), no según NODE_ENV
       const checkoutUrl = isSandbox()
-        ? (mp.sandbox_init_point || mp.init_point)
-        : (mp.init_point || mp.sandbox_init_point);
+        ? mp.sandbox_init_point || mp.init_point
+        : mp.init_point || mp.sandbox_init_point;
 
       return ok({
-        preferenceId:     mp.id,
-        initPoint:        mp.init_point,
+        preferenceId: mp.id,
+        initPoint: mp.init_point,
         sandboxInitPoint: mp.sandbox_init_point,
-        // CheckoutForm lee init_point / sandboxInitPoint
-        init_point:       checkoutUrl,
-        isSandbox:        isSandbox(),
+        init_point: checkoutUrl,
+        isSandbox: isSandbox(),
       });
     }
 
@@ -173,11 +170,11 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// ── GET: MercadoPago Webhook ──────────────────────────────────────
+// Legacy GET IPN (compat)
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const type   = searchParams.get('type');
+    const type = searchParams.get('type');
     const dataId = searchParams.get('data.id') || searchParams.get('id');
     const webhookSecret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
 
@@ -189,11 +186,14 @@ export async function GET(req: NextRequest) {
     }
 
     if (type === 'payment' && dataId && process.env.MERCADOPAGO_ACCESS_TOKEN) {
-      const res  = await fetch(`https://api.mercadopago.com/v1/payments/${dataId}`, {
+      const res = await fetch(`https://api.mercadopago.com/v1/payments/${dataId}`, {
         headers: { Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}` },
       });
       if (!res.ok) {
-        return NextResponse.json({ error: 'No se pudo validar el pago en Mercado Pago' }, { status: 502 });
+        return NextResponse.json(
+          { error: 'No se pudo validar el pago en Mercado Pago' },
+          { status: 502 }
+        );
       }
       const mpPayment = await res.json();
 
@@ -210,7 +210,11 @@ export async function GET(req: NextRequest) {
             paymentMethod: mpPayment.payment_method_id ?? null,
             installments: Number(mpPayment.installments || 1),
           });
-        } else if (payment && mpPayment.status && ['rejected', 'cancelled'].includes(mpPayment.status)) {
+        } else if (
+          payment &&
+          mpPayment.status &&
+          ['rejected', 'cancelled'].includes(mpPayment.status)
+        ) {
           await markPaymentFailed({
             paymentId: payment.id,
             orderId: payment.orderId,
