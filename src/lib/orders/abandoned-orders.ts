@@ -33,6 +33,17 @@ async function releaseReservedStock(tx: Prisma.TransactionClient, orderId: strin
   }
 }
 
+async function rollbackCoupon(tx: Prisma.TransactionClient, couponCode: string | null | undefined) {
+  if (!couponCode) return;
+  await tx.coupon.updateMany({
+    where: {
+      code: couponCode.toUpperCase(),
+      usedCount: { gt: 0 },
+    },
+    data: { usedCount: { decrement: 1 } },
+  });
+}
+
 export type CleanupResult = {
   scanned: number;
   cancelled: number;
@@ -46,8 +57,7 @@ export async function cancelAbandonedOrders(options?: {
 }): Promise<CleanupResult> {
   const olderThanMinutes = Math.max(
     15,
-    options?.olderThanMinutes ??
-      Number(process.env.ORDER_ABANDON_MINUTES || 120)
+    options?.olderThanMinutes ?? Number(process.env.ORDER_ABANDON_MINUTES || 120)
   );
   const limit = Math.min(500, Math.max(1, options?.limit ?? 100));
   const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000);
@@ -62,6 +72,7 @@ export async function cancelAbandonedOrders(options?: {
       id: true,
       orderNumber: true,
       notes: true,
+      couponCode: true,
       payment: { select: { id: true, status: true } },
     },
     take: limit,
@@ -76,7 +87,7 @@ export async function cancelAbandonedOrders(options?: {
       await prisma.$transaction(async (tx) => {
         const fresh = await tx.order.findUnique({
           where: { id: order.id },
-          select: { status: true, paymentStatus: true, notes: true },
+          select: { status: true, paymentStatus: true, notes: true, couponCode: true },
         });
 
         if (!fresh || fresh.status !== 'PENDING') return;
@@ -110,6 +121,7 @@ export async function cancelAbandonedOrders(options?: {
         }
 
         await releaseReservedStock(tx, order.id);
+        await rollbackCoupon(tx, fresh.couponCode);
       });
 
       cancelledIds.push(order.id);

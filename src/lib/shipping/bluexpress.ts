@@ -8,7 +8,7 @@ const BX_API_KEY = process.env.BLUEXPRESS_API_KEY || '';
 const BX_ACCOUNT = process.env.BLUEXPRESS_ACCOUNT || '';
 
 const bxHeaders = {
-  'Authorization': `Bearer ${BX_API_KEY}`,
+  Authorization: `Bearer ${BX_API_KEY}`,
   'X-Account': BX_ACCOUNT,
   'Content-Type': 'application/json',
 };
@@ -26,9 +26,9 @@ export type BXAddress = {
 export type BXPackage = {
   weight: number; // kg
   length: number; // cm
-  width: number;  // cm
+  width: number; // cm
   height: number; // cm
-  value: number;  // CLP - for insurance
+  value: number; // CLP - for insurance
 };
 
 export type BXQuoteParams = {
@@ -69,14 +69,16 @@ export type BXTrackingEvent = {
   location?: string;
 };
 
-// Origin store address (configure in settings)
-const STORE_ORIGIN: BXAddress = {
-  street: 'Su dirección de despacho',
-  number: '123',
-  commune: 'Providencia',
-  city: 'Santiago',
-  region: 'Metropolitana',
-};
+function getStoreOrigin(): BXAddress {
+  return {
+    street: process.env.STORE_ORIGIN_STREET || 'Av. Providencia',
+    number: process.env.STORE_ORIGIN_NUMBER || '1000',
+    commune: process.env.STORE_ORIGIN_COMMUNE || 'Providencia',
+    city: process.env.STORE_ORIGIN_CITY || 'Santiago',
+    region: process.env.STORE_ORIGIN_REGION || 'Metropolitana',
+    postalCode: process.env.STORE_ORIGIN_ZIP || process.env.STORE_ORIGIN_POSTAL || undefined,
+  };
+}
 
 export async function quoteBluexpress(
   destination: BXAddress,
@@ -87,20 +89,18 @@ export async function quoteBluexpress(
       method: 'POST',
       headers: bxHeaders,
       body: JSON.stringify({
-        origin: STORE_ORIGIN,
+        origin: getStoreOrigin(),
         destination,
         packages,
       }),
     });
 
     if (!res.ok) {
-      // Return mock response if API not configured
       return getMockQuotes();
     }
 
     return res.json();
   } catch {
-    // Return mock response in development
     return getMockQuotes();
   }
 }
@@ -122,9 +122,7 @@ export async function createBluexpressShipment(
   return res.json();
 }
 
-export async function trackBluexpress(
-  trackingNumber: string
-): Promise<BXTrackingEvent[]> {
+export async function trackBluexpress(trackingNumber: string): Promise<BXTrackingEvent[]> {
   try {
     const res = await fetch(`${BX_BASE_URL}/tracking/${trackingNumber}`, {
       headers: bxHeaders,
@@ -151,7 +149,6 @@ export async function getBluexpressLabel(trackingNumber: string): Promise<string
   }
 }
 
-// Mock for development/testing
 function getMockQuotes(): BXQuoteResponse[] {
   return [
     {
@@ -171,9 +168,11 @@ function getMockQuotes(): BXQuoteResponse[] {
   ];
 }
 
-export function calculatePackageFromOrder(items: { weight?: number | null; quantity: number }[]): BXPackage {
+export function calculatePackageFromOrder(
+  items: { weight?: number | null; quantity: number }[]
+): BXPackage {
   const totalWeight = items.reduce((sum, item) => {
-    return sum + ((item.weight ? Number(item.weight) : 0.3) * item.quantity);
+    return sum + (item.weight ? Number(item.weight) : 0.3) * item.quantity;
   }, 0);
 
   return {

@@ -4,11 +4,11 @@
  * Protegido con header Authorization: Bearer $CRON_SECRET
  * o query ?secret=$CRON_SECRET
  *
- * Ejemplo crontab (cada 15 min):
- *   */15 * * * * curl -s -X POST -H "Authorization: Bearer $CRON_SECRET" \
+ * Ejemplo crontab (cada 15 minutos):
+ *   curl -s -X POST -H "Authorization: Bearer $CRON_SECRET" \
  *     https://divinittys.cl/api/cron/cleanup-abandoned-orders
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { cancelAbandonedOrders } from '@/lib/orders/abandoned-orders';
 import { ok, unauthorized, serverError } from '@/lib/utils/api';
 
