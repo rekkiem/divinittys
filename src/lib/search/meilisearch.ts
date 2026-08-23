@@ -46,7 +46,17 @@ export async function setupMeiliIndex(): Promise<void> {
     const index = client.index(PRODUCTS_INDEX);
     await index.updateSettings({
       searchableAttributes: ['name', 'description', 'sku', 'category', 'brand', 'tags'],
-      filterableAttributes: ['category', 'categorySlug', 'brand', 'brandSlug', 'isActive', 'isFeatured', 'isOnSale', 'basePrice', 'stock'],
+      filterableAttributes: [
+        'category',
+        'categorySlug',
+        'brand',
+        'brandSlug',
+        'isActive',
+        'isFeatured',
+        'isOnSale',
+        'basePrice',
+        'stock',
+      ],
       sortableAttributes: ['basePrice', 'createdAt', 'name'],
       rankingRules: ['words', 'typo', 'proximity', 'attribute', 'sort', 'exactness'],
       typoTolerance: { enabled: true, minWordSizeForTypos: { oneTypo: 4, twoTypos: 8 } },
@@ -85,7 +95,7 @@ export type SearchProductsParams = {
   minPrice?: number;
   maxPrice?: number;
   onSale?: boolean;
-  sort?: 'price_asc' | 'price_desc' | 'newest' | 'name_asc';
+  sort?: 'price_asc' | 'price_desc' | 'newest' | 'name_asc' | string;
 };
 
 export async function searchProducts(params: SearchProductsParams): Promise<{
@@ -96,29 +106,51 @@ export async function searchProducts(params: SearchProductsParams): Promise<{
   const client = getMeiliClient();
   if (!client) return null;
 
-  const { q, page = 1, limit = 20, category, brand, minPrice, maxPrice, onSale, sort } = params;
+  const {
+    q,
+    page = 1,
+    limit = 20,
+    category,
+    brand,
+    minPrice,
+    maxPrice,
+    onSale,
+    sort,
+  } = params;
+
   const filters: string[] = ['isActive = true'];
-  if (category) filters.push(`categorySlug = "${category}"`);
-  if (brand) filters.push(`brandSlug = "${brand}"`);
-  if (minPrice !== undefined) filters.push(`basePrice >= ${minPrice}`);
-  if (maxPrice !== undefined) filters.push(`basePrice <= ${maxPrice}`);
+  if (category) filters.push(`categorySlug = "${category.replace(/"/g, '')}"`);
+  if (brand) filters.push(`brandSlug = "${brand.replace(/"/g, '')}"`);
+  if (minPrice !== undefined && !Number.isNaN(minPrice)) {
+    filters.push(`basePrice >= ${minPrice}`);
+  }
+  if (maxPrice !== undefined && !Number.isNaN(maxPrice)) {
+    filters.push(`basePrice <= ${maxPrice}`);
+  }
   if (onSale) filters.push('isOnSale = true');
 
   const sortMap: Record<string, string> = {
-    price_asc: 'basePrice:asc', price_desc: 'basePrice:desc',
-    newest: 'createdAt:desc', name_asc: 'name:asc',
+    price_asc: 'basePrice:asc',
+    price_desc: 'basePrice:desc',
+    newest: 'createdAt:desc',
+    name_asc: 'name:asc',
   };
 
+  const offset = (Math.max(1, page) - 1) * limit;
+
   try {
-    const result = await client.index(PRODUCTS_INDEX).search(q, {
-      page, hitsPerPage: limit,
+    // offset/limit es más compatible que page/hitsPerPage entre versiones Meili
+    const result = await client.index(PRODUCTS_INDEX).search(q || '', {
+      offset,
+      limit,
       filter: filters.join(' AND '),
-      sort: sort ? [sortMap[sort]] : ['createdAt:desc'],
+      sort: sort && sortMap[sort] ? [sortMap[sort]] : undefined,
       facets: ['category', 'brand'],
     });
+
     return {
-      hits: result.hits as MeiliProduct[],
-      total: result.totalHits ?? 0,
+      hits: (result.hits || []) as MeiliProduct[],
+      total: result.estimatedTotalHits ?? result.hits?.length ?? 0,
       facets: {
         categories: (result.facetDistribution?.['category'] ?? {}) as Record<string, number>,
         brands: (result.facetDistribution?.['brand'] ?? {}) as Record<string, number>,
@@ -138,7 +170,9 @@ export async function reindexAll(products: MeiliProduct[]): Promise<void> {
     const batchSize = 500;
     for (let i = 0; i < products.length; i += batchSize) {
       await client.index(PRODUCTS_INDEX).addDocuments(products.slice(i, i + batchSize));
-      console.log(`[Meilisearch] indexed ${Math.min(i + batchSize, products.length)}/${products.length}`);
+      console.log(
+        `[Meilisearch] indexed ${Math.min(i + batchSize, products.length)}/${products.length}`
+      );
     }
     console.log('[Meilisearch] reindex complete');
   } catch (e) {

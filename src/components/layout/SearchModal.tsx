@@ -7,18 +7,28 @@ import Image from 'next/image';
 import { Search, X, Loader2, TrendingUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatCLP } from '@/lib/utils/api';
+import { normalizeImageUrl } from '@/lib/images';
 
 type SearchResult = {
   id: string;
   name: string;
   slug: string;
   basePrice: number;
-  images: { url: string }[];
+  images?: { url: string }[] | null;
+  imageUrl?: string | null;
   brand?: { name: string } | null;
   category?: { name: string } | null;
 };
 
-const POPULAR = ['Wella', 'Kerastase', 'Redken', 'Tinte cabello', 'Shampoo', 'Mascarilla', 'Acondicionador'];
+const POPULAR = [
+  'Wella',
+  'Kerastase',
+  'Redken',
+  'Tinte cabello',
+  'Shampoo',
+  'Mascarilla',
+  'Acondicionador',
+];
 
 export default function SearchModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [query, setQuery] = useState('');
@@ -50,8 +60,13 @@ export default function SearchModal({ open, onClose }: { open: boolean; onClose:
         const res = await fetch(`/api/products?q=${encodeURIComponent(query)}&limit=6`, {
           signal: controller.signal,
         });
+        if (!res.ok) {
+          setResults([]);
+          return;
+        }
         const data = await res.json();
-        setResults(data.data?.products || []);
+        const list = Array.isArray(data.data?.products) ? data.data.products : [];
+        setResults(list);
       } catch {
         // Ignore abort errors
       } finally {
@@ -84,7 +99,6 @@ export default function SearchModal({ open, onClose }: { open: boolean; onClose:
     <AnimatePresence>
       {open && (
         <>
-          {/* Overlay */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -93,7 +107,6 @@ export default function SearchModal({ open, onClose }: { open: boolean; onClose:
             onClick={onClose}
           />
 
-          {/* Panel */}
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -101,8 +114,10 @@ export default function SearchModal({ open, onClose }: { open: boolean; onClose:
             transition={{ type: 'spring', stiffness: 400, damping: 30 }}
             className="fixed top-0 left-0 right-0 z-50 bg-white shadow-2xl rounded-b-3xl max-h-[80vh] overflow-hidden"
           >
-            {/* Search bar */}
-            <form onSubmit={handleSubmit} className="flex items-center gap-3 px-6 py-5 border-b border-champagne-200">
+            <form
+              onSubmit={handleSubmit}
+              className="flex items-center gap-3 px-6 py-5 border-b border-champagne-200"
+            >
               <Search className="w-5 h-5 text-primary-500 shrink-0" />
               <input
                 ref={inputRef}
@@ -122,13 +137,14 @@ export default function SearchModal({ open, onClose }: { open: boolean; onClose:
               </button>
             </form>
 
-            {/* Results / Popular */}
             <div className="overflow-y-auto max-h-[60vh] p-4">
               {!query && (
                 <div>
                   <div className="flex items-center gap-2 mb-4 text-charcoal-400">
                     <TrendingUp className="w-4 h-4" />
-                    <span className="font-sans text-xs font-semibold tracking-wider uppercase">Búsquedas populares</span>
+                    <span className="font-sans text-xs font-semibold tracking-wider uppercase">
+                      Búsquedas populares
+                    </span>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {POPULAR.map((term) => (
@@ -153,40 +169,52 @@ export default function SearchModal({ open, onClose }: { open: boolean; onClose:
                   <p className="font-sans text-xs font-semibold text-charcoal-400 uppercase tracking-wider mb-3">
                     {results.length} resultados
                   </p>
-                  {results.map((product) => (
-                    <Link
-                      key={product.id}
-                      href={`/productos/${product.slug}`}
-                      onClick={onClose}
-                      className="flex items-center gap-4 p-3 rounded-xl hover:bg-champagne-50 transition-colors group"
-                    >
-                      <div className="w-14 h-14 rounded-xl bg-champagne-100 overflow-hidden shrink-0">
-                        {product.images[0]?.url ? (
-                          <Image src={product.images[0].url} alt={product.name} width={56} height={56} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <span className="font-display text-xl text-primary-300">D</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        {product.brand && (
-                          <p className="font-sans text-xs font-semibold text-primary-500 uppercase tracking-wider">
-                            {product.brand.name}
+                  {results.map((product) => {
+                    const img =
+                      normalizeImageUrl(product.images?.[0]?.url || product.imageUrl) || null;
+                    return (
+                      <Link
+                        key={product.id}
+                        href={`/productos/${product.slug}`}
+                        onClick={onClose}
+                        className="flex items-center gap-4 p-3 rounded-xl hover:bg-champagne-50 transition-colors group"
+                      >
+                        <div className="w-14 h-14 rounded-xl bg-champagne-100 overflow-hidden shrink-0 relative">
+                          {img ? (
+                            <Image
+                              src={img}
+                              alt={product.name}
+                              width={56}
+                              height={56}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <span className="font-display text-xl text-primary-300">D</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          {product.brand?.name && (
+                            <p className="font-sans text-xs font-semibold text-primary-500 uppercase tracking-wider">
+                              {product.brand.name}
+                            </p>
+                          )}
+                          <p className="font-sans text-sm font-medium text-charcoal-700 group-hover:text-primary-600 truncate transition-colors">
+                            {product.name}
                           </p>
-                        )}
-                        <p className="font-sans text-sm font-medium text-charcoal-700 group-hover:text-primary-600 truncate transition-colors">
-                          {product.name}
-                        </p>
-                        {product.category && (
-                          <p className="font-sans text-xs text-charcoal-400">{product.category.name}</p>
-                        )}
-                      </div>
-                      <span className="font-sans font-bold text-primary-600 text-sm shrink-0">
-                        {formatCLP(product.basePrice)}
-                      </span>
-                    </Link>
-                  ))}
+                          {product.category?.name && (
+                            <p className="font-sans text-xs text-charcoal-400">
+                              {product.category.name}
+                            </p>
+                          )}
+                        </div>
+                        <span className="font-sans font-bold text-primary-600 text-sm shrink-0">
+                          {formatCLP(Number(product.basePrice) || 0)}
+                        </span>
+                      </Link>
+                    );
+                  })}
 
                   {query && (
                     <button
