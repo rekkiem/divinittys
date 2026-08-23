@@ -1,12 +1,6 @@
 /**
  * ProductsGrid — Server Component
- *
- * RSC RULES FOLLOWED:
- * ✅ No event handlers (onChange, onClick, etc.)
- * ✅ No useState / useEffect
- * ✅ Data fetching via Prisma directly
- * ✅ Passes only serializable props to Client Components
- * ✅ Delegates interactivity to SortSelector (Client) + ProductsPagination (Client)
+ * Usa Prisma. La búsqueda con `q` también filtra por marca (nombre).
  */
 import { prisma } from '@/lib/prisma';
 import ProductCard from './ProductCard';
@@ -21,23 +15,28 @@ function buildWhere(searchParams: SearchParams): any {
   const where: any = { isActive: true };
 
   if (searchParams.q) {
-    where.OR = [
-      { name:        { contains: searchParams.q, mode: 'insensitive' } },
-      { description: { contains: searchParams.q, mode: 'insensitive' } },
-      { sku:         { contains: searchParams.q, mode: 'insensitive' } },
-      { brand:       { name: { contains: searchParams.q, mode: 'insensitive' } } },
-    ];
+    const q = searchParams.q.trim();
+    if (q) {
+      where.OR = [
+        { name: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
+        { sku: { contains: q, mode: 'insensitive' } },
+        { brand: { name: { contains: q, mode: 'insensitive' } } },
+      ];
+    }
   }
 
   if (searchParams.category) where.category = { slug: searchParams.category };
-  if (searchParams.brand)    where.brand    = { slug: searchParams.brand };
+  if (searchParams.brand) where.brand = { slug: searchParams.brand };
   if (searchParams.onSale === 'true') where.isOnSale = true;
 
   if (searchParams.minPrice) {
-    where.basePrice = { ...where.basePrice, gte: Number(searchParams.minPrice) };
+    const n = Number(searchParams.minPrice);
+    if (!Number.isNaN(n)) where.basePrice = { ...where.basePrice, gte: n };
   }
   if (searchParams.maxPrice) {
-    where.basePrice = { ...where.basePrice, lte: Number(searchParams.maxPrice) };
+    const n = Number(searchParams.maxPrice);
+    if (!Number.isNaN(n)) where.basePrice = { ...where.basePrice, lte: n };
   }
 
   return where;
@@ -45,11 +44,11 @@ function buildWhere(searchParams: SearchParams): any {
 
 function buildOrderBy(sort?: string): any {
   const sortMap: Record<string, any> = {
-    newest:     { createdAt: 'desc' },
-    price_asc:  { basePrice: 'asc' },
+    newest: { createdAt: 'desc' },
+    price_asc: { basePrice: 'asc' },
     price_desc: { basePrice: 'desc' },
-    name_asc:   { name: 'asc' },
-    featured:   { isFeatured: 'desc' },
+    name_asc: { name: 'asc' },
+    featured: { isFeatured: 'desc' },
   };
   return sortMap[sort || 'newest'] ?? { createdAt: 'desc' };
 }
@@ -59,28 +58,48 @@ export default async function ProductsGrid({
 }: {
   searchParams: SearchParams;
 }) {
-  const page  = Math.max(1, parseInt(searchParams.page || '1'));
-  const skip  = (page - 1) * PAGE_SIZE;
-  const sort  = searchParams.sort || 'newest';
+  const page = Math.max(1, parseInt(searchParams.page || '1', 10) || 1);
+  const skip = (page - 1) * PAGE_SIZE;
+  const sort = searchParams.sort || 'newest';
   const where = buildWhere(searchParams);
 
-  const [products, total] = await prisma.$transaction([
-    prisma.product.findMany({
-      where,
-      take: PAGE_SIZE,
-      skip,
-      orderBy: buildOrderBy(sort),
-      include: {
-        images:    { where: { isMain: true }, take: 1 },
-        brand:     { select: { name: true } },
-        inventory: { select: { stock: true } },
-        category:  { select: { name: true, slug: true } },
-      },
-    }),
-    prisma.product.count({ where }),
-  ]);
+  let products: any[] = [];
+  let total = 0;
 
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  try {
+    const [rows, count] = await prisma.$transaction([
+      prisma.product.findMany({
+        where,
+        take: PAGE_SIZE,
+        skip,
+        orderBy: buildOrderBy(sort),
+        include: {
+          images: { where: { isMain: true }, take: 1 },
+          brand: { select: { name: true } },
+          inventory: { select: { stock: true } },
+          category: { select: { name: true, slug: true } },
+        },
+      }),
+      prisma.product.count({ where }),
+    ]);
+    products = rows;
+    total = count;
+  } catch (err) {
+    console.error('[ProductsGrid] query failed', err);
+    // Evita tumbar la página con error.tsx genérico
+    return (
+      <div className="text-center py-20">
+        <p className="font-display text-4xl font-light text-charcoal-300 mb-4">
+          Error al cargar productos
+        </p>
+        <p className="font-sans text-charcoal-400">
+          Intenta recargar o buscar con otro término.
+        </p>
+      </div>
+    );
+  }
+
+  const totalPages = Math.ceil(total / PAGE_SIZE) || 1;
 
   if (!products.length) {
     return (
@@ -95,24 +114,28 @@ export default async function ProductsGrid({
 
   return (
     <div>
-      {/* Header row: count + sort */}
       <div className="flex items-center justify-between mb-6">
         <p className="font-sans text-sm text-charcoal-400">
           <span className="font-semibold text-charcoal-700">{total}</span> productos
         </p>
-
-        {/* ✅ CORRECTO: SortSelector es Client Component — recibe solo datos serializables */}
         <SortSelector currentSort={sort} searchParams={searchParams} />
       </div>
 
-      {/* Product grid */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         {products.map((product: any, i: number) => (
-          <ProductCard key={product.id} product={product} index={i} />
+          <ProductCard
+            key={product.id}
+            product={{
+              ...product,
+              basePrice: Number(product.basePrice),
+              comparePrice: product.comparePrice != null ? Number(product.comparePrice) : null,
+              images: product.images || [],
+            }}
+            index={i}
+          />
         ))}
       </div>
 
-      {/* Pagination */}
       {totalPages > 1 && (
         <ProductsPagination
           currentPage={page}
