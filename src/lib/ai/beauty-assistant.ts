@@ -1,11 +1,12 @@
 /**
  * LUNA — Asistente de belleza DIVINITTYS
- * Provider: Google Gemini (gemini-2.5-flash-lite)
- * Env: GEMINI_API_KEY
+ * Provider: Google Gemini (gemini-3.5-flash-lite)
+ * Env: GEMINI_API_KEY  |  opcional: GEMINI_MODEL
  */
 import { prisma } from '../prisma';
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
+// 2.5-flash-lite ya no está disponible para cuentas nuevas (404).
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
 const BEAUTY_SYSTEM_PROMPT = `Eres LUNA, la asistente de belleza virtual de DIVINITTYS, tienda de productos de belleza profesional en Chile.
@@ -51,7 +52,6 @@ async function loadCatalogContext(userMessage: string): Promise<CatalogItem[]> {
     .filter((w) => w.length > 3)
     .slice(0, 6);
 
-  // Búsqueda simple por nombre/tags + featured de respaldo
   const products = await prisma.product.findMany({
     where: {
       isActive: true,
@@ -130,13 +130,11 @@ async function callGemini(
     throw new Error('MISSING_GEMINI_API_KEY');
   }
 
-  // Gemini: historial como contents; system como systemInstruction
   const contents = messages.map((m) => ({
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content }],
   }));
 
-  // Gemini exige que el primer turno sea user
   if (contents.length && contents[0].role === 'model') {
     contents.unshift({ role: 'user', parts: [{ text: '(inicio de conversación)' }] });
   }
@@ -183,8 +181,6 @@ export async function chatWithBeautyAssistant(
       [...messages].reverse().find((m) => m.role === 'user')?.content || '';
     const catalog = await loadCatalogContext(lastUser);
     const system = `${BEAUTY_SYSTEM_PROMPT}\n\n${formatCatalogBlock(catalog)}`;
-
-    // Limitar historial para no inflar tokens
     const recent = messages.slice(-12);
 
     return await callGemini(system, recent, 450);
