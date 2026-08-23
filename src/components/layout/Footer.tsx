@@ -1,12 +1,12 @@
 import Link from 'next/link';
-import { Sparkles, Instagram, Facebook, Youtube, MapPin, Phone, Mail } from 'lucide-react';
+import { Sparkles, Instagram, Facebook, MapPin, Phone, Mail } from 'lucide-react';
 
 const footerLinks = {
   productos: [
     { label: 'Cuidado Capilar', href: '/productos?category=cuidado-capilar' },
     { label: 'Coloración', href: '/productos?category=coloracion' },
     { label: 'Tratamientos', href: '/productos?category=tratamientos' },
-    { label: 'Maquillaje', href: '/productos?category=maquillaje' },
+    { label: 'Todo el catálogo', href: '/productos' },
     { label: 'Ofertas', href: '/productos?onSale=true' },
   ],
   servicios: [
@@ -28,10 +28,8 @@ const footerLinks = {
 export default function Footer() {
   return (
     <footer className="bg-charcoal-600 text-charcoal-200">
-      {/* Top section */}
       <div className="max-w-7xl mx-auto px-4 py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12">
-          {/* Brand */}
           <div className="lg:col-span-2 space-y-6">
             <Link href="/" className="flex items-center gap-2 group">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-400 to-rose-400 flex items-center justify-center">
@@ -42,42 +40,50 @@ export default function Footer() {
               </span>
             </Link>
             <p className="font-sans text-sm text-charcoal-300 leading-relaxed max-w-xs">
-              Tu portal de belleza profesional con los mejores productos capilares y cosméticos, con tecnología IA para recomendaciones personalizadas.
+              Portal de belleza profesional con productos capilares y cosméticos, y tecnología IA
+              para recomendaciones personalizadas.
             </p>
 
-            {/* Contact */}
             <div className="space-y-2">
               {[
-                { Icon: MapPin, text: 'Santiago, Chile' },
-                { Icon: Phone, text: '+56 9 8902 4643' },
-                { Icon: Mail, text: 'contacto@divinittys.cl' },
-              ].map(({ Icon, text }) => (
-                <div key={text} className="flex items-center gap-2 text-sm text-charcoal-300">
+                { Icon: MapPin, text: 'Santiago, Chile', href: '/contacto' },
+                { Icon: Phone, text: '+56 9 8902 4643', href: 'https://wa.me/56989024643' },
+                { Icon: Mail, text: 'contacto@divinittys.cl', href: 'mailto:contacto@divinittys.cl' },
+              ].map(({ Icon, text, href }) => (
+                <a
+                  key={text}
+                  href={href}
+                  className="flex items-center gap-2 text-sm text-charcoal-300 hover:text-primary-300 transition-colors"
+                  {...(href.startsWith('http') ? { target: '_blank', rel: 'noreferrer' } : {})}
+                >
                   <Icon className="w-4 h-4 text-primary-400 shrink-0" />
                   <span className="font-sans">{text}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Social */}
-            <div className="flex gap-3">
-              {[
-                { Icon: Instagram, href: '#' },
-                { Icon: Facebook, href: '#' },
-                { Icon: Youtube, href: '#' },
-              ].map(({ Icon, href }, i) => (
-                <a
-                  key={i}
-                  href={href}
-                  className="w-9 h-9 rounded-full bg-charcoal-500 hover:bg-primary-500 flex items-center justify-center text-charcoal-300 hover:text-white transition-colors"
-                >
-                  <Icon className="w-4 h-4" />
                 </a>
               ))}
             </div>
+
+            <div className="flex gap-3">
+              <a
+                href="https://www.instagram.com/"
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Instagram"
+                className="w-9 h-9 rounded-full bg-charcoal-500 hover:bg-primary-500 flex items-center justify-center text-charcoal-300 hover:text-white transition-colors"
+              >
+                <Instagram className="w-4 h-4" />
+              </a>
+              <a
+                href="https://www.facebook.com/"
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Facebook"
+                className="w-9 h-9 rounded-full bg-charcoal-500 hover:bg-primary-500 flex items-center justify-center text-charcoal-300 hover:text-white transition-colors"
+              >
+                <Facebook className="w-4 h-4" />
+              </a>
+            </div>
           </div>
 
-          {/* Links */}
           {Object.entries(footerLinks).map(([key, links]) => (
             <div key={key}>
               <h4 className="font-sans text-xs font-bold text-white tracking-widest uppercase mb-5">
@@ -85,7 +91,7 @@ export default function Footer() {
               </h4>
               <ul className="space-y-3">
                 {links.map((link) => (
-                  <li key={link.href}>
+                  <li key={link.href + link.label}>
                     <Link
                       href={link.href}
                       className="font-sans text-sm text-charcoal-300 hover:text-primary-300 transition-colors"
@@ -100,7 +106,6 @@ export default function Footer() {
         </div>
       </div>
 
-      {/* Payment methods & trust */}
       <div className="border-t border-charcoal-500">
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
@@ -115,25 +120,24 @@ export default function Footer() {
               ))}
             </div>
             <div className="flex items-center gap-6 text-xs font-sans text-charcoal-400">
-              <span>🔒 Pago 100% seguro</span>
-              <span>📦 Despacho Bluexpress</span>
-              <span>✅ Productos originales</span>
+              <span>🔒 Pago seguro</span>
+              <span>📦 Bluexpress</span>
+              <span>✅ Originales</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Bottom */}
       <div className="border-t border-charcoal-500">
         <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <p className="font-sans text-xs text-charcoal-400">
             © {new Date().getFullYear()} DIVINITTYS. Todos los derechos reservados.
           </p>
           <div className="flex gap-4">
-            <Link href="/privacidad" className="font-sans text-xs text-charcoal-400 hover:text-primary-300 transition-colors">
+            <Link href="/privacidad" className="font-sans text-xs text-charcoal-400 hover:text-primary-300">
               Privacidad
             </Link>
-            <Link href="/terminos" className="font-sans text-xs text-charcoal-400 hover:text-primary-300 transition-colors">
+            <Link href="/terminos" className="font-sans text-xs text-charcoal-400 hover:text-primary-300">
               Términos
             </Link>
           </div>
