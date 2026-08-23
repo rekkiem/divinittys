@@ -27,6 +27,17 @@ async function releaseReservedStock(tx: Prisma.TransactionClient, orderId: strin
   }
 }
 
+async function rollbackCoupon(tx: Prisma.TransactionClient, couponCode: string | null | undefined) {
+  if (!couponCode) return;
+  await tx.coupon.updateMany({
+    where: {
+      code: couponCode.toUpperCase(),
+      usedCount: { gt: 0 },
+    },
+    data: { usedCount: { decrement: 1 } },
+  });
+}
+
 export async function markPaymentFailed(params: {
   paymentId: string;
   orderId: string;
@@ -42,6 +53,11 @@ export async function markPaymentFailed(params: {
     if (!existing || existing.status === 'FAILED' || existing.status === 'CANCELLED') {
       return;
     }
+
+    const order = await tx.order.findUnique({
+      where: { id: params.orderId },
+      select: { couponCode: true },
+    });
 
     await tx.payment.update({
       where: { id: params.paymentId },
@@ -61,6 +77,7 @@ export async function markPaymentFailed(params: {
     });
 
     await releaseReservedStock(tx, params.orderId);
+    await rollbackCoupon(tx, order?.couponCode);
   });
 
   logger.warn('payment.failed', {
