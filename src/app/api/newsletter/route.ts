@@ -6,13 +6,17 @@ import { rateLimit } from '@/lib/security/rate-limit';
 import { sanitizeEmail, sanitizeText } from '@/lib/security/sanitize';
 
 const SubscribeSchema = z.object({
-  email:  z.string().email('Email inválido'),
-  name:   z.string().optional(),
+  email: z.string().email('Email inválido'),
+  name: z.string().optional(),
   source: z.string().optional(),
 });
 
 export async function POST(req: NextRequest) {
-  const limit = rateLimit(req, { key: 'newsletter-subscribe', limit: 3, windowMs: 60 * 60 * 1000 });
+  const limit = await rateLimit(req, {
+    key: 'newsletter-subscribe',
+    limit: 3,
+    windowMs: 60 * 60 * 1000,
+  });
   if (!limit.allowed) {
     return Response.json({ error: 'Demasiados intentos. Intenta en una hora.' }, { status: 429 });
   }
@@ -51,7 +55,10 @@ export async function DELETE(req: NextRequest) {
     if (!email) return badRequest('Email requerido');
     const normalizedEmail = sanitizeEmail(email);
 
-    await prisma.subscriber.updateMany({ where: { email: normalizedEmail }, data: { isActive: false } });
+    await prisma.subscriber.updateMany({
+      where: { email: normalizedEmail },
+      data: { isActive: false },
+    });
 
     return ok({ message: 'Desuscripción exitosa' });
   } catch (e) {
