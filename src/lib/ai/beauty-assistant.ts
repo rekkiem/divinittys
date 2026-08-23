@@ -1,65 +1,210 @@
-import OpenAI from 'openai';
+/**
+ * LUNA — Asistente de belleza DIVINITTYS
+ * Provider: Google Gemini (gemini-2.5-flash-lite)
+ * Env: GEMINI_API_KEY
+ */
 import { prisma } from '../prisma';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
-const BEAUTY_SYSTEM_PROMPT = `Eres LUNA, la asistente de belleza virtual de DIVINITTYS, una tienda especializada en productos de belleza profesional en Chile. 
+const BEAUTY_SYSTEM_PROMPT = `Eres LUNA, la asistente de belleza virtual de DIVINITTYS, tienda de productos de belleza profesional en Chile.
 
-Tu personalidad:
-- Experta en belleza, colorimetría capilar y cuidado del cabello
+Personalidad:
+- Experta en belleza, colorimetría y cuidado del cabello
 - Amigable, empática y profesional
-- Hablas en español latinoamericano
-- Das recomendaciones específicas de productos cuando es apropiado
-- Siempre preguntas sobre las necesidades específicas del cliente
+- Español de Chile / latinoamericano
+- Respuestas claras, máximo ~180 palabras
 
-Conoces profundamente:
-- Tipos de cabello (liso, ondulado, rizado, afro)
-- Colorimetría y técnicas de coloración
-- Tratamientos capilares (keratina, botox capilar, nutrición)
-- Marcas profesionales (Wella, L'Oréal, Schwarzkopf, Kerastase, Redken)
-- Rutinas de cuidado capilar
+Reglas de venta:
+- Recomienda SOLO productos de la lista CATALOGO_ACTUAL que te entregamos en cada mensaje
+- Si mencionas un producto, incluye su nombre exacto y precio en CLP
+- Si el cliente quiere comprar, indícale la ruta /productos/{slug} cuando esté disponible
+- No inventes productos, precios ni stock
+- Si no hay match en el catálogo, dilo y sugiere alternativas cercanas del listado
 
-Cuando un cliente describe su cabello o necesidad, recomienda productos específicos de nuestro catálogo cuando sea posible.
-Si no tienes información suficiente, pregunta más detalles.
-Responde siempre de forma concisa pero útil (máximo 200 palabras).`;
+Postventa (si preguntan por pedido):
+- Pide número de pedido o email
+- Indica que pueden revisar en /cuenta o escribir a soporte
+- No inventes estados de envío
+
+Conocimiento general: tipos de cabello, colorimetría, keratina, rutinas, marcas profesionales.`;
 
 export type ChatMessage = {
   role: 'user' | 'assistant';
   content: string;
 };
 
+type CatalogItem = {
+  id: string;
+  name: string;
+  slug: string;
+  price: number;
+  brand: string;
+  category: string;
+};
+
+async function loadCatalogContext(userMessage: string): Promise<CatalogItem[]> {
+  const words = userMessage
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 3)
+    .slice(0, 6);
+
+  // Búsqueda simple por nombre/tags + featured de respaldo
+  const products = await prisma.product.findMany({
+    where: {
+      isActive: true,
+      OR:
+        words.length > 0
+          ? [
+              ...words.map((w) => ({ name: { contains: w, mode: 'insensitive' as const } })),
+              ...words.map((w) => ({ tags: { has: w } })),
+              { isFeatured: true },
+            ]
+          : [{ isFeatured: true }, { isOnSale: true }],
+    },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      basePrice: true,
+      brand: { select: { name: true } },
+      category: { select: { name: true } },
+    },
+    take: 12,
+    orderBy: [{ isFeatured: 'desc' }, { updatedAt: 'desc' }],
+  });
+
+  if (products.length > 0) {
+    return products.map((p) => ({
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      price: Number(p.basePrice),
+      brand: p.brand?.name || 'Sin marca',
+      category: p.category.name,
+    }));
+  }
+
+  const fallback = await prisma.product.findMany({
+    where: { isActive: true },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      basePrice: true,
+      brand: { select: { name: true } },
+      category: { select: { name: true } },
+    },
+    take: 10,
+    orderBy: { isFeatured: 'desc' },
+  });
+
+  return fallback.map((p) => ({
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    price: Number(p.basePrice),
+    brand: p.brand?.name || 'Sin marca',
+    category: p.category.name,
+  }));
+}
+
+function formatCatalogBlock(items: CatalogItem[]): string {
+  if (!items.length) return 'CATALOGO_ACTUAL: (vacío por ahora)';
+  const lines = items.map(
+    (p) =>
+      `- ${p.name} | ${p.brand} | ${p.category} | $${p.price} CLP | /productos/${p.slug}`
+  );
+  return `CATALOGO_ACTUAL (usa solo estos productos):\n${lines.join('\n')}`;
+}
+
+async function callGemini(
+  system: string,
+  messages: ChatMessage[],
+  maxTokens = 500
+): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('MISSING_GEMINI_API_KEY');
+  }
+
+  // Gemini: historial como contents; system como systemInstruction
+  const contents = messages.map((m) => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
+
+  // Gemini exige que el primer turno sea user
+  if (contents.length && contents[0].role === 'model') {
+    contents.unshift({ role: 'user', parts: [{ text: '(inicio de conversación)' }] });
+  }
+
+  const url = `${GEMINI_API_BASE}/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents,
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: maxTokens,
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    console.error('Gemini error', res.status, errText.slice(0, 500));
+    throw new Error(`GEMINI_HTTP_${res.status}`);
+  }
+
+  const data = await res.json();
+  const text =
+    data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text || '').join('') ||
+    '';
+
+  if (!text.trim()) {
+    throw new Error('GEMINI_EMPTY_RESPONSE');
+  }
+
+  return text.trim();
+}
+
 export async function chatWithBeautyAssistant(
   messages: ChatMessage[],
-  userId?: string
+  _userId?: string
 ): Promise<string> {
   try {
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: BEAUTY_SYSTEM_PROMPT },
-        ...messages,
-      ],
-      max_tokens: 400,
-      temperature: 0.7,
-    });
+    const lastUser =
+      [...messages].reverse().find((m) => m.role === 'user')?.content || '';
+    const catalog = await loadCatalogContext(lastUser);
+    const system = `${BEAUTY_SYSTEM_PROMPT}\n\n${formatCatalogBlock(catalog)}`;
 
-    return completion.choices[0]?.message?.content || 'Lo siento, no pude procesar tu consulta.';
-  } catch (error) {
-    console.error('OpenAI error:', error);
-    return 'Lo siento, el asistente no está disponible en este momento. Por favor contáctanos directamente.';
+    // Limitar historial para no inflar tokens
+    const recent = messages.slice(-12);
+
+    return await callGemini(system, recent, 450);
+  } catch (error: any) {
+    console.error('Luna chat error:', error?.message || error);
+    if (error?.message === 'MISSING_GEMINI_API_KEY') {
+      return 'LUNA aún no está configurada (falta GEMINI_API_KEY). El equipo ya fue notificado.';
+    }
+    return 'Lo siento, el asistente no está disponible en este momento. Por favor intenta de nuevo en unos minutos o contáctanos por WhatsApp/soporte.';
   }
 }
 
 export type HairDiagnosisInput = {
-  hairType: string;        // liso, ondulado, rizado, muy_rizado
-  hairTexture: string;     // fino, normal, grueso
-  hairCondition: string;   // sano, dañado, muy_dañado, quimicamente_tratado
-  currentColor: string;    // natural, teñido, decolorado, con_canas
-  concerns: string[];      // sequedad, frizz, puntas_abiertas, caida, falta_volumen
-  desiredTreatment: string[]; // hidratacion, nutricion, keratina, coloracion, crecimiento
-  budget: string;          // bajo, medio, alto
+  hairType: string;
+  hairTexture: string;
+  hairCondition: string;
+  currentColor: string;
+  concerns: string[];
+  desiredTreatment: string[];
+  budget: string;
 };
 
 export async function generateHairDiagnosis(
@@ -71,9 +216,8 @@ export async function generateHairDiagnosis(
   recommendedProducts: typeof availableProducts;
   tips: string[];
 }> {
-  const prompt = `
-Diagnóstico capilar del cliente:
-- Tipo de cabello: ${input.hairType}
+  const prompt = `Diagnóstico capilar del cliente:
+- Tipo: ${input.hairType}
 - Textura: ${input.hairTexture}
 - Condición: ${input.hairCondition}
 - Color actual: ${input.currentColor}
@@ -81,35 +225,32 @@ Diagnóstico capilar del cliente:
 - Tratamientos deseados: ${input.desiredTreatment.join(', ')}
 - Presupuesto: ${input.budget}
 
-Productos disponibles en DIVINITTYS:
-${availableProducts.slice(0, 20).map(p => `- ${p.name} (${p.category}, ${p.brand}, $${p.price})`).join('\n')}
+Productos disponibles:
+${availableProducts
+  .slice(0, 20)
+  .map((p) => `- ${p.name} (${p.category}, ${p.brand}, $${p.price})`)
+  .join('\n')}
 
-Genera un diagnóstico capilar personalizado en JSON con:
+Responde SOLO JSON válido (sin markdown):
 {
-  "diagnosis": "diagnóstico en 2-3 oraciones",
+  "diagnosis": "2-3 oraciones",
   "routine": ["paso 1", "paso 2", "paso 3", "paso 4"],
-  "recommendedProductNames": ["nombre producto 1", "nombre producto 2", "nombre producto 3"],
+  "recommendedProductNames": ["nombre 1", "nombre 2", "nombre 3"],
   "tips": ["tip 1", "tip 2", "tip 3"]
-}
-Responde SOLO el JSON, sin markdown.`;
+}`;
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: BEAUTY_SYSTEM_PROMPT },
-        { role: 'user', content: prompt },
-      ],
-      max_tokens: 600,
-      temperature: 0.5,
-    });
-
-    const content = completion.choices[0]?.message?.content || '{}';
-    const parsed = JSON.parse(content);
+    const content = await callGemini(
+      BEAUTY_SYSTEM_PROMPT,
+      [{ role: 'user', content: prompt }],
+      600
+    );
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : content);
 
     const recommendedProducts = availableProducts.filter((p) =>
       (parsed.recommendedProductNames || []).some((name: string) =>
-        p.name.toLowerCase().includes(name.toLowerCase())
+        p.name.toLowerCase().includes(String(name).toLowerCase())
       )
     );
 
@@ -123,7 +264,12 @@ Responde SOLO el JSON, sin markdown.`;
     console.error('Hair diagnosis error:', error);
     return {
       diagnosis: 'Basado en tu perfil, te recomendamos comenzar con una rutina de hidratación.',
-      routine: ['Lavar con champú suave', 'Aplicar acondicionador', 'Usar mascarilla 1x semana', 'Aplicar sérum reparador'],
+      routine: [
+        'Lavar con champú suave',
+        'Aplicar acondicionador',
+        'Usar mascarilla 1x semana',
+        'Aplicar sérum reparador',
+      ],
       recommendedProducts: availableProducts.slice(0, 3),
       tips: ['Evita el calor excesivo', 'Protege del sol', 'Hidrata regularmente'],
     };
@@ -138,7 +284,6 @@ export async function generateProductRecommendations(
     searchHistory?: string[];
   }
 ): Promise<string[]> {
-  // Get viewed/purchased products for context
   const userHistory = await prisma.order.findMany({
     where: { userId, paymentStatus: 'PAID' },
     include: { items: { include: { product: { include: { category: true } } } } },
@@ -151,7 +296,6 @@ export async function generateProductRecommendations(
     .slice(0, 10);
 
   if (purchasedCategories.length === 0) {
-    // Return featured products for new users
     const featured = await prisma.product.findMany({
       where: { isActive: true, isFeatured: true },
       take: 6,
@@ -160,14 +304,11 @@ export async function generateProductRecommendations(
     return featured.map((p: any) => p.id);
   }
 
-  // Find similar products
   const recommended = await prisma.product.findMany({
     where: {
       isActive: true,
       category: { name: { in: purchasedCategories } },
-      NOT: {
-        id: { in: context.viewedProductIds || [] },
-      },
+      NOT: { id: { in: context.viewedProductIds || [] } },
     },
     take: 8,
     select: { id: true },
@@ -188,41 +329,34 @@ export async function generateTinturaRecommendation(params: {
   steps: string[];
   warnings: string[];
 }> {
-  const prompt = `
-Soy una colorista profesional. Cliente quiere:
+  const prompt = `Colorista profesional. Cliente:
 - Color actual: ${params.currentColor}
 - Color deseado: ${params.desiredColor}
-- Condición del cabello: ${params.hairCondition}
+- Condición: ${params.hairCondition}
 - Técnica: ${params.technique || 'no especificada'}
 
-Genera recomendación en JSON:
+Responde SOLO JSON:
 {
-  "recommendation": "explicación del proceso en 2-3 oraciones",
-  "products": ["producto recomendado 1", "producto 2", "producto 3"],
+  "recommendation": "2-3 oraciones",
+  "products": ["p1", "p2", "p3"],
   "steps": ["paso 1", "paso 2", "paso 3"],
-  "warnings": ["advertencia 1 si aplica"]
-}
-Responde SOLO el JSON.`;
+  "warnings": ["advertencia si aplica"]
+}`;
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: BEAUTY_SYSTEM_PROMPT },
-        { role: 'user', content: prompt },
-      ],
-      max_tokens: 500,
-      temperature: 0.4,
-    });
-
-    const content = completion.choices[0]?.message?.content || '{}';
-    return JSON.parse(content);
+    const content = await callGemini(
+      BEAUTY_SYSTEM_PROMPT,
+      [{ role: 'user', content: prompt }],
+      500
+    );
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    return JSON.parse(jsonMatch ? jsonMatch[0] : content);
   } catch {
     return {
       recommendation: 'Para este cambio de color, recomendamos trabajar con un profesional.',
       products: ['Tintura profesional', 'Oxidante', 'Mascarilla post-coloración'],
-      steps: ['Realizar prueba de alergia', 'Aplicar coloración', 'Hidratar post-proceso'],
-      warnings: ['Consultar con colorista profesional para cambios extremos'],
+      steps: ['Prueba de alergia', 'Aplicar coloración', 'Hidratar post-proceso'],
+      warnings: ['Consultar colorista para cambios extremos'],
     };
   }
 }
