@@ -56,3 +56,6 @@ dist/
 backups/
 **/*env.production.backup*
 *.local-backup
+backups/
+*.bak
+*.local-backup
