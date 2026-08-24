@@ -70,6 +70,9 @@ services:
       MINIO_ENDPOINT: minio
       MINIO_PORT: "9000"
       MINIO_USE_SSL: "false"
+      ML_TOKEN_FILE: /app/.oauth/ml-tokens.json
+    volumes:
+      - ./.oauth:/app/.oauth:ro
     depends_on:
       postgres:
         condition: service_healthy

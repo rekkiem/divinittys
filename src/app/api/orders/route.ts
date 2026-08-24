@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      for (const productId of variantProductIds) {
+      for (const productId of Array.from(variantProductIds)) {
         const activeVariants = await tx.productVariant.findMany({ where: { productId, isActive: true }, select: { stock: true } });
         const aggregateStock = activeVariants.reduce((sum: number, v: { stock: number }) => sum + v.stock, 0);
         await tx.inventory.upsert({ where: { productId }, update: { stock: aggregateStock }, create: { productId, stock: aggregateStock, lowStockThreshold: 5, trackStock: true } });

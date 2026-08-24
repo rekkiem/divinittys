@@ -53,3 +53,6 @@ dist/
 #   - Security audits (npm audit)
 # ─────────────────────────────────────────────────────────────────
 .oauth/
+backups/
+**/*env.production.backup*
+*.local-backup
