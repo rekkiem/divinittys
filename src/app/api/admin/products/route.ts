@@ -6,28 +6,37 @@ import { ok, created, badRequest, serverError } from '@/lib/utils/api';
 import { slugify } from '@/lib/utils/api';
 import { sanitizeMultilineText, sanitizeText } from '@/lib/security/sanitize';
 
+const VariantSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().min(1),
+  sku: z.string().min(1),
+  price: z.number().positive(),
+  stock: z.number().int().min(0).default(0),
+  isActive: z.boolean().optional().default(true),
+});
+
 const ProductSchema = z.object({
-  sku:               z.string().min(1),
-  name:              z.string().min(2),
-  slug:              z.string().optional(),
-  description:       z.string().nullable().optional(),
-  shortDescription:  z.string().nullable().optional(),
-  categoryId:        z.string().min(1),
-  brandId:           z.string().nullable().optional(),
-  basePrice:         z.number().positive('El precio debe ser mayor a 0'),
-  comparePrice:      z.number().positive().nullable().optional(),
-  costPrice:         z.number().positive().nullable().optional(),
-  isActive:          z.boolean().default(true),
-  isFeatured:        z.boolean().default(false),
-  isOnSale:          z.boolean().default(false),
-  tags:              z.array(z.string()).default([]),
-  weight:            z.number().positive().nullable().optional(),
-  stock:             z.number().int().min(0).default(0),
+  sku: z.string().min(1),
+  name: z.string().min(2),
+  slug: z.string().optional(),
+  description: z.string().nullable().optional(),
+  shortDescription: z.string().nullable().optional(),
+  categoryId: z.string().min(1),
+  brandId: z.string().nullable().optional(),
+  basePrice: z.number().positive('El precio debe ser mayor a 0'),
+  comparePrice: z.number().positive().nullable().optional(),
+  costPrice: z.number().positive().nullable().optional(),
+  isActive: z.boolean().default(true),
+  isFeatured: z.boolean().default(false),
+  isOnSale: z.boolean().default(false),
+  tags: z.array(z.string()).default([]),
+  weight: z.number().positive().nullable().optional(),
+  stock: z.number().int().min(0).default(0),
   lowStockThreshold: z.number().int().min(0).default(5),
-  trackStock:        z.boolean().default(true),
-  // MinIO image fields
-  imageUrl:          z.string().url().nullable().optional(),
-  imageUrls:         z.array(z.string().url()).optional(),
+  trackStock: z.boolean().default(true),
+  imageUrl: z.string().url().nullable().optional(),
+  imageUrls: z.array(z.string().url()).optional(),
+  variants: z.array(VariantSchema).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -43,7 +52,9 @@ export async function POST(req: NextRequest) {
       name: sanitizeText(parsed.name),
       slug: parsed.slug ? slugify(parsed.slug) : undefined,
       description: parsed.description ? sanitizeMultilineText(parsed.description) : null,
-      shortDescription: parsed.shortDescription ? sanitizeText(parsed.shortDescription) : null,
+      shortDescription: parsed.shortDescription
+        ? sanitizeText(parsed.shortDescription)
+        : null,
       tags: parsed.tags.map((tag) => sanitizeText(tag)).filter(Boolean),
     };
     const slug = data.slug || slugify(data.name);
@@ -57,47 +68,89 @@ export async function POST(req: NextRequest) {
     }
 
     const [category, brand] = await Promise.all([
-      prisma.category.findUnique({ where: { id: data.categoryId }, select: { id: true, isActive: true } }),
-      data.brandId ? prisma.brand.findUnique({ where: { id: data.brandId }, select: { id: true, isActive: true } }) : Promise.resolve(null),
+      prisma.category.findUnique({
+        where: { id: data.categoryId },
+        select: { id: true, isActive: true },
+      }),
+      data.brandId
+        ? prisma.brand.findUnique({
+            where: { id: data.brandId },
+            select: { id: true, isActive: true },
+          })
+        : Promise.resolve(null),
     ]);
-    if (!category || !category.isActive) return badRequest('La categoría seleccionada no existe o está inactiva');
-    if (data.brandId && (!brand || !brand.isActive)) return badRequest('La marca seleccionada no existe o está inactiva');
-    if (data.comparePrice !== null && data.comparePrice !== undefined && data.comparePrice <= data.basePrice) {
+    if (!category || !category.isActive)
+      return badRequest('La categoría seleccionada no existe o está inactiva');
+    if (data.brandId && (!brand || !brand.isActive))
+      return badRequest('La marca seleccionada no existe o está inactiva');
+    if (
+      data.comparePrice !== null &&
+      data.comparePrice !== undefined &&
+      data.comparePrice <= data.basePrice
+    ) {
       return badRequest('El precio comparado debe ser mayor que el precio base');
     }
 
     const product = await prisma.$transaction(async (tx: any) => {
       const p = await tx.product.create({
         data: {
-          sku: data.sku, name: data.name, slug,
-          description: data.description, shortDescription: data.shortDescription,
-          categoryId: data.categoryId, brandId: data.brandId,
-          basePrice: data.basePrice, comparePrice: data.comparePrice,
-          costPrice: data.costPrice, isActive: data.isActive,
-          isFeatured: data.isFeatured, isOnSale: data.isOnSale,
-          tags: data.tags, weight: data.weight,
+          sku: data.sku,
+          name: data.name,
+          slug,
+          description: data.description,
+          shortDescription: data.shortDescription,
+          categoryId: data.categoryId,
+          brandId: data.brandId,
+          basePrice: data.basePrice,
+          comparePrice: data.comparePrice,
+          costPrice: data.costPrice,
+          isActive: data.isActive,
+          isFeatured: data.isFeatured,
+          isOnSale: data.isOnSale,
+          tags: data.tags,
+          weight: data.weight,
           imageUrl: data.imageUrl ?? null,
         },
       });
 
       await tx.inventory.create({
         data: {
-          productId: p.id, stock: data.stock,
-          lowStockThreshold: data.lowStockThreshold, trackStock: data.trackStock,
+          productId: p.id,
+          stock: data.stock,
+          lowStockThreshold: data.lowStockThreshold,
+          trackStock: data.trackStock,
         },
       });
 
-      // Persist uploaded image URLs as ProductImage records
-      const urls = data.imageUrls?.length ? data.imageUrls : data.imageUrl ? [data.imageUrl] : [];
+      const urls = data.imageUrls?.length
+        ? data.imageUrls
+        : data.imageUrl
+          ? [data.imageUrl]
+          : [];
       for (let i = 0; i < urls.length; i++) {
         await tx.productImage.create({
           data: {
             productId: p.id,
-            url:       urls[i],
-            isMain:    i === 0,
+            url: urls[i],
+            isMain: i === 0,
             sortOrder: i,
           },
         });
+      }
+
+      if (data.variants?.length) {
+        for (const v of data.variants) {
+          await tx.productVariant.create({
+            data: {
+              productId: p.id,
+              name: sanitizeText(v.name),
+              sku: sanitizeText(v.sku),
+              price: v.price,
+              stock: v.stock,
+              isActive: v.isActive ?? true,
+            },
+          });
+        }
       }
 
       return p;
