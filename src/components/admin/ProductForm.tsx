@@ -112,22 +112,19 @@ export default function ProductForm({ categories, brands, initialData }: Product
 
   const addVariant = () => {
     const n = variants.length + 1;
-    setVariants((
-      (v) =>
-        v.concat({
-          name: '',
-          sku: `${form.sku || 'SKU'}-V${n}`,
-          price: form.basePrice || '',
-          stock: '0',
-          isActive: true,
-        })
+    setVariants((rows) =>
+      rows.concat({
+        name: '',
+        sku: `${form.sku || 'SKU'}-V${n}`,
+        price: form.basePrice || '',
+        stock: '0',
+        isActive: true,
+      })
     );
   };
 
   const updateVariant = (index: number, key: keyof VariantRow, value: string | boolean) => {
-    setVariants((rows) =>
-      rows.map((r, i) => (i === index ? { ...r, [key]: value } : r))
-    );
+    setVariants((rows) => rows.map((r, i) => (i === index ? { ...r, [key]: value } : r)));
   };
 
   const removeVariant = (index: number) => {
@@ -373,7 +370,6 @@ export default function ProductForm({ categories, brands, initialData }: Product
             </div>
           </div>
 
-          {/* Variantes / tonos (tinturas) */}
           <div className="bg-card rounded-2xl border border-border p-6 space-y-4">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -381,8 +377,7 @@ export default function ProductForm({ categories, brands, initialData }: Product
                   Variantes (tono / número)
                 </h2>
                 <p className="font-sans text-xs text-charcoal-400 mt-1">
-                  Ej. tinturas: P8 Rubio clarísimo, 9.1 Ceniza… El cliente debe elegir una al
-                  comprar.
+                  Ej. tinturas: P8 Rubio clarísimo, 9.1 Ceniza. El cliente debe elegir una al comprar.
                 </p>
               </div>
               <button
@@ -402,7 +397,7 @@ export default function ProductForm({ categories, brands, initialData }: Product
               <div className="space-y-3">
                 {variants.map((v, i) => (
                   <div
-                    key={v.id || i}
+                    key={v.id || `new-${i}`}
                     className="grid grid-cols-12 gap-2 items-end border border-champagne-200 rounded-xl p-3"
                   >
                     <div className="col-span-12 sm:col-span-4">
