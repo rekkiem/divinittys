@@ -6,7 +6,7 @@ import { logger } from '@/lib/logger';
 import { Prisma } from '@prisma/client';
 
 async function recalculateVariantAggregate(tx: Prisma.TransactionClient, productIds: string[]) {
-  for (const productId of [...new Set(productIds)]) {
+  for (const productId of Array.from(new Set(productIds))) {
     const variants = await tx.productVariant.findMany({ where: { productId, isActive: true }, select: { stock: true } });
     if (!variants.length) continue;
     const stock = variants.reduce((sum, variant) => sum + variant.stock, 0);
