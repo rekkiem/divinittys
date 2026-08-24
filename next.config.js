@@ -9,24 +9,32 @@ const nextConfig = {
       // ── MinIO local (development) ────────────────────────────────
       { protocol: 'http', hostname: 'localhost', port: '9000', pathname: '/imagenes/**' },
       { protocol: 'http', hostname: 'localhost', port: '9000', pathname: '/**' },
+      { protocol: 'http', hostname: '127.0.0.1', port: '9000', pathname: '/**' },
       // MinIO inside Docker network
-      { protocol: 'http', hostname: 'minio',     port: '9000', pathname: '/imagenes/**' },
-      { protocol: 'http', hostname: 'minio',     port: '9000', pathname: '/**' },
-      // Production media proxy
+      { protocol: 'http', hostname: 'minio', port: '9000', pathname: '/imagenes/**' },
+      { protocol: 'http', hostname: 'minio', port: '9000', pathname: '/**' },
+
+      // ── Producción / prep — proxy de medios (MinIO vía nginx) ─────
+      { protocol: 'https', hostname: 'media.divinittys.cl', pathname: '/**' },
+      { protocol: 'http', hostname: 'media.divinittys.cl', pathname: '/**' },
+
+      // App origins (si alguna imagen se sirve bajo /media en el mismo host)
       { protocol: 'https', hostname: 'divinittys.cl', pathname: '/media/**' },
       { protocol: 'https', hostname: 'www.divinittys.cl', pathname: '/media/**' },
+      { protocol: 'https', hostname: 'prep.divinittys.cl', pathname: '/media/**' },
+      { protocol: 'https', hostname: 'prep.divinittys.cl', pathname: '/**' },
+
       // ── Cloud / CDN ──────────────────────────────────────────────
       { protocol: 'https', hostname: '**.r2.cloudflarestorage.com', pathname: '/**' },
-      { protocol: 'https', hostname: 'res.cloudinary.com',          pathname: '/**' },
-      // ── MercadoLibre CDN (imported products) ─────────────────────
+      { protocol: 'https', hostname: 'res.cloudinary.com', pathname: '/**' },
+
+      // ── MercadoLibre CDN (productos importados) ──────────────────
       { protocol: 'https', hostname: 'http2.mlstatic.com', pathname: '/**' },
-      { protocol: 'https', hostname: '**.mlstatic.com',   pathname: '/**' },
+      { protocol: 'https', hostname: '**.mlstatic.com', pathname: '/**' },
     ],
     formats: ['image/avif', 'image/webp'],
     deviceSizes: [360, 480, 640, 750, 828, 1080, 1200, 1920],
     minimumCacheTTL: 3600,
-    // In dev, skip Next.js image optimization for MinIO URLs
-    // so images load directly without proxy overhead
     unoptimized: process.env.NODE_ENV === 'development',
   },
 
@@ -63,16 +71,15 @@ const nextConfig = {
         source: '/api/:path*',
         headers: [
           { key: 'Access-Control-Allow-Credentials', value: 'true' },
-          { key: 'Access-Control-Allow-Origin',      value: appOrigin },
-          { key: 'Access-Control-Allow-Methods',     value: 'GET,POST,PUT,PATCH,DELETE,OPTIONS' },
-          { key: 'Access-Control-Allow-Headers',     value: 'Authorization, Content-Type' },
-          { key: 'X-Content-Type-Options',           value: 'nosniff' },
-          { key: 'X-Frame-Options',                  value: 'DENY' },
-          { key: 'Referrer-Policy',                  value: 'strict-origin-when-cross-origin' },
-          { key: 'Content-Security-Policy',          value: "frame-ancestors 'none'" },
+          { key: 'Access-Control-Allow-Origin', value: appOrigin },
+          { key: 'Access-Control-Allow-Methods', value: 'GET,POST,PUT,PATCH,DELETE,OPTIONS' },
+          { key: 'Access-Control-Allow-Headers', value: 'Authorization, Content-Type' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
         ],
       },
-      // Serve uploaded files from /public/uploads (local fallback)
       {
         source: '/uploads/:path*',
         headers: [
