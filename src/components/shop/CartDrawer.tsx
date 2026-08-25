@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { X, ShoppingBag, Minus, Plus, Trash2, ArrowRight } from 'lucide-react';
@@ -15,8 +15,22 @@ type CartDrawerProps = {
 
 export default function CartDrawer({ open, onClose }: CartDrawerProps) {
   const { items, updateQuantity, removeItem, subtotal, count } = useCartStore();
-  const freeShippingThreshold = 50000;
+  const [freeShippingThreshold, setFreeShippingThreshold] = useState(29990);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/settings/public')
+      .then((r) => r.json())
+      .then((d) => {
+        const n = Number(d?.data?.settings?.free_shipping_threshold ?? d?.settings?.free_shipping_threshold);
+        if (!cancelled && Number.isFinite(n) && n >= 0) setFreeShippingThreshold(n);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   const remaining = freeShippingThreshold - subtotal;
+  const qualifiesFree = subtotal >= freeShippingThreshold && items.length > 0;
 
   return (
     <AnimatePresence>
@@ -59,17 +73,25 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
             </div>
 
             {/* Free shipping progress */}
-            {items.length > 0 && remaining > 0 && (
+            {items.length > 0 && (
               <div className="px-6 py-3 bg-champagne-50 border-b border-champagne-200">
-                <p className="font-sans text-xs text-charcoal-500 mb-1.5">
-                  Te faltan <strong className="text-primary-600">{formatCLP(remaining)}</strong> para envío gratis 🎉
-                </p>
-                <div className="h-1.5 bg-champagne-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary-400 rounded-full transition-all duration-500"
-                    style={{ width: `${Math.min((subtotal / freeShippingThreshold) * 100, 100)}%` }}
-                  />
-                </div>
+                {qualifiesFree ? (
+                  <p className="font-sans text-xs text-emerald-700 font-semibold">
+                    ¡Envío gratis! Superaste {formatCLP(freeShippingThreshold)}
+                  </p>
+                ) : (
+                  <>
+                    <p className="font-sans text-xs text-charcoal-500 mb-1.5">
+                      Te faltan <strong className="text-primary-600">{formatCLP(Math.max(remaining, 0))}</strong> para envío gratis
+                    </p>
+                    <div className="h-1.5 bg-champagne-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-primary-400 rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min((subtotal / Math.max(freeShippingThreshold, 1)) * 100, 100)}%` }}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -100,7 +122,6 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                         exit={{ opacity: 0, x: -20 }}
                         className="flex gap-4 py-4 border-b border-border last:border-0"
                       >
-                        {/* Image */}
                         <div className="w-20 h-20 rounded-xl overflow-hidden bg-champagne-50 flex-shrink-0">
                           {item.image ? (
                             <Image src={item.image} alt={item.name} width={80} height={80} className="w-full h-full object-cover" />
@@ -108,8 +129,6 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                             <div className="w-full h-full bg-champagne-gradient" />
                           )}
                         </div>
-
-                        {/* Info */}
                         <div className="flex-1 min-w-0">
                           <p className="font-sans text-sm font-medium text-charcoal-700 line-clamp-2 leading-tight">
                             {item.name}
@@ -118,7 +137,6 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                             <p className="font-sans text-xs text-muted-foreground mt-0.5">{item.variantName}</p>
                           )}
                           <p className="font-sans font-bold text-primary-600 mt-1">{formatCLP(item.price)}</p>
-
                           <div className="flex items-center gap-3 mt-2">
                             <div className="flex items-center gap-1 border border-border rounded-lg">
                               <button
@@ -137,7 +155,6 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                                 <Plus className="w-3 h-3" />
                               </button>
                             </div>
-
                             <button
                               onClick={() => removeItem(item.id, item.variantId)}
                               className="p-1.5 text-muted-foreground hover:text-destructive transition-colors"
