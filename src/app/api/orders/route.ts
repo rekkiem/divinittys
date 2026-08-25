@@ -4,10 +4,11 @@ import { prisma } from '@/lib/prisma';
 import { getAuthUser } from '@/lib/auth';
 import { ok, created, badRequest, unauthorized, serverError, generateOrderNumber } from '@/lib/utils/api';
 import { quoteBluexpress, calculatePackageFromOrder } from '@/lib/shipping/bluexpress';
+import { getFreeShippingThreshold } from '@/lib/shipping/free-shipping';
+import { isValidChileCommune } from '@/lib/chile/geo';
 
 const MAX_SHIPPING_CLP = 15000;
 const SHIPPING_TOLERANCE = 0.15;
-const FREE_SHIPPING_THRESHOLD = 50000;
 
 const createOrderSchema = z.object({
   items: z.array(z.object({ productId: z.string(), variantId: z.string().optional(), quantity: z.number().int().min(1) })).min(1),
@@ -60,6 +61,9 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getAuthUser(req);
     const data = createOrderSchema.parse(await req.json());
+    if (!isValidChileCommune(data.shippingData.region, data.shippingData.commune)) {
+      return badRequest('La comuna no corresponde a la región. Revisa la dirección de envío.');
+    }
     const productIds = data.items.map((i) => i.productId);
     const products = await prisma.product.findMany({ where: { id: { in: productIds }, isActive: true }, include: { inventory: true, variants: true, images: { where: { isMain: true }, take: 1 } } });
     if (products.length !== new Set(productIds).size) return badRequest('Algunos productos no están disponibles');
@@ -94,7 +98,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const freeShipping = freeShippingCoupon || subtotal >= FREE_SHIPPING_THRESHOLD;
+    const freeShippingThreshold = await getFreeShippingThreshold();
+    const freeShipping = freeShippingCoupon || subtotal >= freeShippingThreshold;
     const shipping = await resolveShippingAmount({ clientAmount: data.shippingAmount, shippingService: data.shippingService, shippingData: data.shippingData, items: data.items, freeShipping });
     const shippingAmount = shipping.amount;
     const total = subtotal - discountAmount + shippingAmount;
@@ -129,6 +134,27 @@ export async function POST(req: NextRequest) {
       }
 
       if (data.couponCode) await tx.coupon.update({ where: { code: data.couponCode.toUpperCase() }, data: { usedCount: { increment: 1 } } });
+
+      if (user?.id) {
+        const existing = await tx.address.findFirst({ where: { userId: user.id, isDefault: true } });
+        const addr = {
+          firstName: data.shippingData.firstName,
+          lastName: data.shippingData.lastName,
+          street: data.shippingData.street,
+          number: data.shippingData.number,
+          apartment: data.shippingData.apartment || null,
+          commune: data.shippingData.commune,
+          city: data.shippingData.city,
+          region: data.shippingData.region,
+          phone: data.shippingData.phone,
+        };
+        if (existing) {
+          await tx.address.update({ where: { id: existing.id }, data: addr });
+        } else {
+          await tx.address.create({ data: { userId: user.id, label: 'Casa', isDefault: true, ...addr } });
+        }
+      }
+
       return newOrder;
     });
 
