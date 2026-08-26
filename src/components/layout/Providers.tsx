@@ -1,6 +1,7 @@
 'use client';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { SessionProvider } from 'next-auth/react';
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
 
@@ -21,9 +22,11 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient(queryClientConfig));
 
   return (
-    <QueryClientProvider client={queryClient}>
-      {children}
-      <BeautyChat />
-    </QueryClientProvider>
+    <SessionProvider>
+      <QueryClientProvider client={queryClient}>
+        {children}
+        <BeautyChat />
+      </QueryClientProvider>
+    </SessionProvider>
   );
 }
