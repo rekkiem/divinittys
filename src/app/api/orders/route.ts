@@ -95,28 +95,28 @@ export async function POST(req: NextRequest) {
       const lineTotal = price * item.quantity;
       subtotal += lineTotal;
       orderItems.push({
-        productId: item.productId,
-        variantId: item.variantId,
+        productId: product.id,
+        variantId: variant?.id,
         sku: variant?.sku || product.sku,
         name: variant ? `${product.name} - ${variant.name}` : product.name,
-        image: product.images?.[0]?.url || null,
         quantity: item.quantity,
-        price,
-        total: lineTotal,
+        unitPrice: price,
+        totalPrice: lineTotal,
+        image: product.images[0]?.url || product.imageUrl,
       });
     }
 
-    let discountAmount = 0;
-    let couponCode: string | undefined;
+    let discount = 0;
     if (data.couponCode) {
-      const coupon = await prisma.coupon.findUnique({ where: { code: data.couponCode.toUpperCase() } });
-      if (coupon && coupon.isActive && (!coupon.expiresAt || coupon.expiresAt > new Date()) && (!coupon.maxUses || coupon.usedCount < coupon.maxUses) && subtotal >= Number(coupon.minOrderAmount || 0)) {
-        discountAmount = coupon.type === 'PERCENT' ? Math.round(subtotal * (Number(coupon.value) / 100)) : Number(coupon.value);
-        couponCode = coupon.code;
+      const coupon = await prisma.coupon.findFirst({ where: { code: data.couponCode.toUpperCase(), isActive: true } });
+      if (coupon) {
+        if (coupon.type === 'PERCENTAGE') discount = subtotal * (Number(coupon.value) / 100);
+        else discount = Number(coupon.value);
+        discount = Math.min(discount, subtotal);
       }
     }
 
-    const freeShipping = subtotal - discountAmount >= FREE_SHIPPING_THRESHOLD;
+    const freeShipping = subtotal - discount >= FREE_SHIPPING_THRESHOLD;
     const shipping = await resolveShippingAmount({
       clientAmount: data.shippingAmount,
       shippingService: data.shippingService,
@@ -125,25 +125,26 @@ export async function POST(req: NextRequest) {
       freeShipping,
     });
 
-    const total = Math.max(0, subtotal - discountAmount + shipping.amount);
+    const total = subtotal - discount + shipping.amount;
+    const orderNumber = generateOrderNumber();
 
     const order = await prisma.$transaction(async (tx) => {
       const newOrder = await tx.order.create({
         data: {
-          orderNumber: generateOrderNumber(),
+          orderNumber,
           userId: user?.id,
           status: 'PENDING',
           paymentStatus: 'PENDING',
           subtotal,
-          discountAmount,
+          discountAmount: discount,
           shippingAmount: shipping.amount,
           total,
-          guestEmail: !user ? data.shippingData.email : undefined,
-          guestName: !user ? `${data.shippingData.firstName} ${data.shippingData.lastName}` : undefined,
-          guestPhone: !user ? data.shippingData.phone : undefined,
-          shippingData: data.shippingData as any,
-          couponCode,
+          couponCode: data.couponCode?.toUpperCase(),
           notes: data.notes,
+          shippingData: data.shippingData,
+          guestEmail: user ? undefined : data.shippingData.email,
+          guestName: user ? undefined : `${data.shippingData.firstName} ${data.shippingData.lastName}`,
+          guestPhone: user ? undefined : data.shippingData.phone,
           items: { create: orderItems },
         },
         include: { items: true, payment: true },
@@ -152,11 +153,18 @@ export async function POST(req: NextRequest) {
       const variantProductIds = new Set<string>();
       for (const item of data.items) {
         if (item.variantId) {
-          variantProductIds.add(item.productId);
-          const updated = await tx.productVariant.updateMany({ where: { id: item.variantId, stock: { gte: item.quantity } }, data: { stock: { decrement: item.quantity } } });
+          const updated = await tx.productVariant.updateMany({
+            where: { id: item.variantId, stock: { gte: item.quantity } },
+            data: { stock: { decrement: item.quantity } },
+          });
           if (updated.count !== 1) throw new Error(`Stock insuficiente para variante ${item.variantId}`);
+          const v = await tx.productVariant.findUnique({ where: { id: item.variantId } });
+          if (v) variantProductIds.add(v.productId);
         } else {
-          const updated = await tx.inventory.updateMany({ where: { productId: item.productId, stock: { gte: item.quantity } }, data: { reservedStock: { increment: item.quantity } } });
+          const updated = await tx.inventory.updateMany({
+            where: { productId: item.productId, stock: { gte: item.quantity } },
+            data: { reservedStock: { increment: item.quantity } },
+          });
           if (updated.count !== 1) throw new Error(`Stock insuficiente para ${item.productId}`);
         }
       }
