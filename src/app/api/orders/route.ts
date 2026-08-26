@@ -33,9 +33,7 @@ async function resolveShippingAmount(params: {
   if (typeof params.clientAmount !== 'number') return { amount: serverQuotes[0]?.price ?? fallback, source: serverQuotes.length ? 'server-quote' : 'fallback' };
   let matched = serverQuotes[0];
   if (params.shippingService && serverQuotes.length) matched = serverQuotes.find((q) => q.serviceName === params.shippingService || q.serviceCode === params.shippingService || params.shippingService!.toLowerCase().includes(q.serviceCode.toLowerCase())) || matched;
-  if (matched) {
-    const min = matched.price * (1 - SHIPPING_TOLERANCE), max = matched.price * (1 + SHIPPING_TOLERANCE);
-    if (params.clientAmount < min || params.clientAmount > max) return { amount: matched.price, source: 'server-override' };
+  if (matched && Math.abs(matched.price - params.clientAmount) / Math.max(matched.price, 1) <= SHIPPING_TOLERANCE) {
     return { amount: params.clientAmount, source: 'client-validated' };
   }
   if (params.clientAmount > MAX_SHIPPING_CLP) return { amount: fallback, source: 'capped' };
@@ -47,13 +45,31 @@ export async function GET(req: NextRequest) {
   try {
     const user = await getAuthUser(req);
     if (!user) return unauthorized();
+    // Ocultar checkouts abandonados (PENDING + pago PENDING): solo viven en el carrito
     const orders = await prisma.order.findMany({
-      where: { userId: user.id },
-      include: { items: { include: { product: { include: { images: { where: { isMain: true }, take: 1 } } } } }, payment: { select: { status: true, provider: true } }, shipment: { select: { trackingNumber: true, status: true } } },
+      where: {
+        userId: user.id,
+        NOT: {
+          AND: [{ status: 'PENDING' }, { paymentStatus: 'PENDING' }],
+        },
+      },
+      include: {
+        items: {
+          include: {
+            product: {
+              include: { images: { where: { isMain: true }, take: 1 } },
+            },
+          },
+        },
+        payment: { select: { status: true, provider: true, paidAt: true, paymentMethod: true } },
+        shipment: { select: { trackingNumber: true, status: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
     return ok({ orders });
-  } catch (error) { return serverError(error); }
+  } catch (error) {
+    return serverError(error);
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -78,44 +94,67 @@ export async function POST(req: NextRequest) {
       if (product.inventory?.trackStock && stock < item.quantity) return badRequest(`Stock insuficiente para "${product.name}${variant ? ` - ${variant.name}` : ''}"`);
       const lineTotal = price * item.quantity;
       subtotal += lineTotal;
-      orderItems.push({ productId: item.productId, variantId: variant?.id, sku: variant?.sku || product.sku, name: variant ? `${product.name} - ${variant.name}` : product.name, image: variant?.image || product.images[0]?.url, price, quantity: item.quantity, total: lineTotal });
+      orderItems.push({
+        productId: item.productId,
+        variantId: item.variantId,
+        sku: variant?.sku || product.sku,
+        name: variant ? `${product.name} - ${variant.name}` : product.name,
+        image: product.images?.[0]?.url || null,
+        quantity: item.quantity,
+        price,
+        total: lineTotal,
+      });
     }
 
     let discountAmount = 0;
-    let freeShippingCoupon = false;
+    let couponCode: string | undefined;
     if (data.couponCode) {
-      const coupon = await prisma.coupon.findFirst({ where: { code: data.couponCode.toUpperCase(), isActive: true, OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }] } });
-      if (coupon) {
-        if (coupon.minOrderAmount && subtotal < Number(coupon.minOrderAmount)) return badRequest(`El cupón requiere un mínimo de $${coupon.minOrderAmount}`);
-        if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) return badRequest('Cupón agotado');
-        if (coupon.type === 'PERCENTAGE') discountAmount = subtotal * (Number(coupon.value) / 100);
-        else if (coupon.type === 'FIXED_AMOUNT') discountAmount = Math.min(Number(coupon.value), subtotal);
-        else if (coupon.type === 'FREE_SHIPPING') freeShippingCoupon = true;
+      const coupon = await prisma.coupon.findUnique({ where: { code: data.couponCode.toUpperCase() } });
+      if (coupon && coupon.isActive && (!coupon.expiresAt || coupon.expiresAt > new Date()) && (!coupon.maxUses || coupon.usedCount < coupon.maxUses) && subtotal >= Number(coupon.minOrderAmount || 0)) {
+        discountAmount = coupon.type === 'PERCENT' ? Math.round(subtotal * (Number(coupon.value) / 100)) : Number(coupon.value);
+        couponCode = coupon.code;
       }
     }
 
-    const freeShipping = freeShippingCoupon || subtotal >= FREE_SHIPPING_THRESHOLD;
-    const shipping = await resolveShippingAmount({ clientAmount: data.shippingAmount, shippingService: data.shippingService, shippingData: data.shippingData, items: data.items, freeShipping });
-    const shippingAmount = shipping.amount;
-    const total = subtotal - discountAmount + shippingAmount;
+    const freeShipping = subtotal - discountAmount >= FREE_SHIPPING_THRESHOLD;
+    const shipping = await resolveShippingAmount({
+      clientAmount: data.shippingAmount,
+      shippingService: data.shippingService,
+      shippingData: data.shippingData,
+      items: data.items,
+      freeShipping,
+    });
 
-    const order = await prisma.$transaction(async (tx: any) => {
+    const total = Math.max(0, subtotal - discountAmount + shipping.amount);
+
+    const order = await prisma.$transaction(async (tx) => {
       const newOrder = await tx.order.create({
         data: {
-          orderNumber: generateOrderNumber(), userId: user?.id, status: 'PENDING', subtotal, discountAmount, shippingAmount, total,
-          guestEmail: !user ? data.shippingData.email : undefined, shippingData: data.shippingData, couponCode: data.couponCode,
-          notes: [data.notes, data.shippingService ? `Envío: ${data.shippingService}` : null, `shipping_source=${shipping.source}`].filter(Boolean).join(' | '),
+          orderNumber: generateOrderNumber(),
+          userId: user?.id,
+          status: 'PENDING',
+          paymentStatus: 'PENDING',
+          subtotal,
+          discountAmount,
+          shippingAmount: shipping.amount,
+          total,
+          guestEmail: !user ? data.shippingData.email : undefined,
+          guestName: !user ? `${data.shippingData.firstName} ${data.shippingData.lastName}` : undefined,
+          guestPhone: !user ? data.shippingData.phone : undefined,
+          shippingData: data.shippingData as any,
+          couponCode,
+          notes: data.notes,
           items: { create: orderItems },
-          payment: { create: { provider: 'WEBPAY', status: 'PENDING', amount: total, currency: 'CLP' } },
-        }, include: { items: true, payment: true },
+        },
+        include: { items: true, payment: true },
       });
 
       const variantProductIds = new Set<string>();
       for (const item of data.items) {
         if (item.variantId) {
-          const updated = await tx.productVariant.updateMany({ where: { id: item.variantId, productId: item.productId, isActive: true, stock: { gte: item.quantity } }, data: { stock: { decrement: item.quantity } } });
-          if (updated.count !== 1) throw new Error(`Stock insuficiente para la variante ${item.variantId}`);
           variantProductIds.add(item.productId);
+          const updated = await tx.productVariant.updateMany({ where: { id: item.variantId, stock: { gte: item.quantity } }, data: { stock: { decrement: item.quantity } } });
+          if (updated.count !== 1) throw new Error(`Stock insuficiente para variante ${item.variantId}`);
         } else {
           const updated = await tx.inventory.updateMany({ where: { productId: item.productId, stock: { gte: item.quantity } }, data: { reservedStock: { increment: item.quantity } } });
           if (updated.count !== 1) throw new Error(`Stock insuficiente para ${item.productId}`);
