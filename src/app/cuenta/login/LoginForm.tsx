@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Sparkles, Loader2, Eye, EyeOff } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
+import GoogleSignInButton from '@/components/auth/GoogleSignInButton';
 
 export default function LoginForm() {
   const router = useRouter();
@@ -18,6 +19,43 @@ export default function LoginForm() {
 
   // FIX: read ?redirect= param so admins land on /admin after login
   const redirectTo = searchParams?.get('redirect') ?? null;
+  const errorParam = searchParams?.get('error');
+
+  useEffect(() => {
+    if (errorParam === 'google_auth_failed') {
+      toast.error('No se pudo iniciar sesión con Google. Intenta de nuevo.');
+    } else if (errorParam === 'account_disabled') {
+      toast.error('Tu cuenta está desactivada. Contacta soporte.');
+    }
+  }, [errorParam]);
+
+  // Tras volver de Google (cookie auth_just_logged_in), hidratar el store
+  useEffect(() => {
+    const justLogged = document.cookie.includes('auth_just_logged_in=1');
+    if (!justLogged) return;
+
+    (async () => {
+      try {
+        const res = await fetch('/api/auth?action=me', { credentials: 'include' });
+        const data = await res.json();
+        if (data.success && data.data?.user) {
+          setUser(data.data.user);
+          // El access token ya está en la cookie; el store lo puede dejar null o refrescar
+          toast.success('¡Bienvenida de vuelta!');
+          const role = data.data.user.role;
+          if (redirectTo && redirectTo.startsWith('/')) {
+            router.push(redirectTo);
+          } else if (role === 'ADMIN' || role === 'SUPER_ADMIN') {
+            router.push('/admin');
+          } else {
+            router.push('/cuenta');
+          }
+        }
+      } catch {
+        // silencioso
+      }
+    })();
+  }, [setUser, router, redirectTo]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,6 +90,11 @@ export default function LoginForm() {
     }
   };
 
+  const googleCallback =
+    redirectTo && redirectTo.startsWith('/')
+      ? `/api/auth/google-callback?callbackUrl=${encodeURIComponent(redirectTo)}`
+      : '/api/auth/google-callback';
+
   return (
     <div className="min-h-screen flex">
       {/* Left: Form */}
@@ -70,6 +113,23 @@ export default function LoginForm() {
 
           <h1 className="font-display text-4xl font-light text-charcoal-700 mb-2">Bienvenida</h1>
           <p className="font-sans text-charcoal-400 mb-8">Ingresa a tu cuenta para continuar</p>
+
+          {/* Google OAuth */}
+          <div className="mb-6">
+            <GoogleSignInButton
+              label="Iniciar sesión con Google"
+              callbackUrl={googleCallback}
+            />
+          </div>
+
+          <div className="relative mb-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-champagne-200" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-3 text-charcoal-400 font-sans tracking-wider">o con email</span>
+            </div>
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
