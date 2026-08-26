@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
     const data = createOrderSchema.parse(await req.json());
     const productIds = data.items.map((i) => i.productId);
     const products = await prisma.product.findMany({ where: { id: { in: productIds }, isActive: true }, include: { inventory: true, variants: true, images: { where: { isMain: true }, take: 1 } } });
-    if (products.length !== new Set(productIds).size) return badRequest('Algunos productos no son disponibles');
+    if (products.length !== new Set(productIds).size) return badRequest('Algunos productos no están disponibles');
 
     let subtotal = 0;
     const orderItems: any[] = [];
