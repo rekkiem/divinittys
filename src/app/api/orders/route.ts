@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
     const data = createOrderSchema.parse(await req.json());
     const productIds = data.items.map((i) => i.productId);
     const products = await prisma.product.findMany({ where: { id: { in: productIds }, isActive: true }, include: { inventory: true, variants: true, images: { where: { isMain: true }, take: 1 } } });
-    if (products.length !== new Set(productIds).size) return badRequest('Algunos productos no están disponibles');
+    if (products.length !== new Set(productIds).size) return badRequest('Algunos productos no son disponibles');
 
     let subtotal = 0;
     const orderItems: any[] = [];
@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
         if (coupon.minOrderAmount && subtotal < Number(coupon.minOrderAmount)) return badRequest(`El cupón requiere un mínimo de $${coupon.minOrderAmount}`);
         if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) return badRequest('Cupón agotado');
         if (coupon.type === 'PERCENTAGE') discountAmount = subtotal * (Number(coupon.value) / 100);
-        else if (coupon.type === 'FIXED') discountAmount = Number(coupon.value);
+        else if (coupon.type === 'FIXED_AMOUNT') discountAmount = Number(coupon.value);
         else if (coupon.type === 'FREE_SHIPPING') freeShippingCoupon = true;
       }
     }
