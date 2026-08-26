@@ -12,7 +12,7 @@
  *   signIn('google', { callbackUrl: '/api/auth/google-callback' })
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../../auth';
+import { auth } from '../../../../../auth';
 import { prisma } from '@/lib/prisma';
 import {
   signAccessToken,
@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
   const res = NextResponse.redirect(new URL(safeCallback, req.url));
   setAuthCookies(res, accessToken, refreshToken);
 
-  // También podemos setear un flag temporal para que el client hidrate el store
+  // Flag temporal para que el client hidrate el store
   res.cookies.set('auth_just_logged_in', '1', {
     httpOnly: false,
     maxAge: 60,
