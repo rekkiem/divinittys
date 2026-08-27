@@ -44,56 +44,80 @@ export async function loadOurProducts(
   throw new Error(`Fuente desconocida: ${source}`);
 }
 
+/**
+ * Carga publicaciones activas del seller vía API PRIVADA:
+ *   GET /users/{sellerId}/items/search  → ids
+ *   GET /items?ids=...                  → detalle (título, attrs, precio)
+ *
+ * No usa /sites/MLC/search (403 PolicyAgent en muchas apps).
+ */
 async function loadFromSeller(
   client: MlApiClient,
   limit: number
 ): Promise<OurProduct[]> {
   const products: OurProduct[] = [];
   let offset = 0;
+  const pageSize = Math.min(CONFIG.searchLimit, 50);
 
   while (products.length < limit) {
-    const data = await client.searchBySeller(CONFIG.ourSellerId, offset);
-    const results: any[] = data.results || [];
-    if (!results.length) break;
+    const data = await client.searchSellerItems(
+      CONFIG.ourSellerId,
+      offset,
+      pageSize
+    );
+    const ids: string[] = (data.results || []).map(String);
+    if (!ids.length) break;
 
-    for (const r of results) {
-      if (products.length >= limit) break;
-      const brandAttr = (r.attributes || []).find(
-        (a: any) => a.id === 'BRAND' || a.name === 'Marca'
-      );
-      const gtinAttr = (r.attributes || []).find(
-        (a: any) =>
-          a.id === 'GTIN' ||
-          a.id === 'EAN' ||
-          String(a.name || '')
-            .toLowerCase()
-            .includes('gtin') ||
-          String(a.name || '')
-            .toLowerCase()
-            .includes('ean')
-      );
-
-      products.push({
-        id: r.id,
-        title: r.title,
-        sku: `ML-${r.id}`,
-        mlItemId: r.id,
-        price: r.price,
-        brand: brandAttr?.value_name || null,
-        gtin: gtinAttr?.value_name || null,
-      });
+    // Multiget de a 20 (límite habitual ML)
+    for (let i = 0; i < ids.length && products.length < limit; i += 20) {
+      const batch = ids.slice(i, i + 20);
+      const items = await client.getItems(batch);
+      for (const item of items) {
+        if (products.length >= limit) break;
+        products.push(mapItemToOurProduct(item));
+      }
     }
 
-    offset += CONFIG.searchLimit;
-    if (results.length < CONFIG.searchLimit) break;
-    if (offset >= (data.paging?.total ?? 0)) break;
+    offset += pageSize;
+    const total = data.paging?.total ?? 0;
+    if (offset >= total) break;
+    if (ids.length < pageSize) break;
   }
 
   return products;
 }
 
+function mapItemToOurProduct(item: any): OurProduct {
+  const attrs: any[] = item.attributes || [];
+  const brandAttr = attrs.find(
+    (a) => a.id === 'BRAND' || a.name === 'Marca'
+  );
+  const gtinAttr = attrs.find(
+    (a) =>
+      a.id === 'GTIN' ||
+      a.id === 'EAN' ||
+      a.id === 'UPC' ||
+      /gtin|ean|upc/i.test(String(a.name || ''))
+  );
+  const modelAttr = attrs.find(
+    (a) => a.id === 'MODEL' || /modelo|model/i.test(String(a.name || ''))
+  );
+
+  return {
+    id: String(item.id),
+    title: String(item.title || ''),
+    sku: `ML-${item.id}`,
+    mlItemId: String(item.id),
+    price: Number(item.price ?? 0),
+    brand: brandAttr?.value_name || null,
+    model: modelAttr?.value_name || null,
+    gtin: gtinAttr?.value_name
+      ? String(gtinAttr.value_name).replace(/\D/g, '') || null
+      : null,
+  };
+}
+
 async function loadFromPrisma(limit: number): Promise<OurProduct[]> {
-  // Import dinámico para no fallar si se corre solo con --source=seller/demo
   const { PrismaClient } = await import('@prisma/client');
   const prisma = new PrismaClient();
 

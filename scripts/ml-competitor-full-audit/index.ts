@@ -5,9 +5,14 @@
  * Auditoría de competidores en Mercado Envíos Full — Divinittys
  *
  * Uso:
+ *   # Token: export ML_ACCESS_TOKEN desde .oauth (ver README)
+ *   npx tsx scripts/ml-competitor-full-audit/index.ts --source=seller --limit=15 --max-pages=1
+ *   npx tsx scripts/ml-competitor-full-audit/index.ts --source=prisma --limit=50
  *   npx tsx scripts/ml-competitor-full-audit/index.ts --demo
- *   ML_ACCESS_TOKEN=APP_USR-... npx tsx scripts/ml-competitor-full-audit/index.ts --source=seller
- *   DATABASE_URL=... npx tsx scripts/ml-competitor-full-audit/index.ts --source=prisma --limit=50
+ *
+ * Nota: /sites/MLC/search suele responder 403 (PolicyAgent).
+ * Los productos propios se cargan por /users/{id}/items/search (API privada).
+ * Competidores: site search si está permitido; si no, products/search por GTIN.
  */
 
 import { CONFIG } from './config';
@@ -17,7 +22,10 @@ import {
   loadOurProducts,
   type ProductSource,
 } from './sources/our-products';
-import { extractFullCompetitors } from './filters/full-competitors';
+import {
+  extractFullCompetitors,
+  findCompetitorsFallback,
+} from './filters/full-competitors';
 import { buildReport, writeReport } from './report/generate';
 import type { CompetitorHit } from './types';
 
@@ -51,58 +59,84 @@ async function main() {
   if (!token && source !== 'demo') {
     console.warn(
       '\n⚠️  Sin ML_ACCESS_TOKEN ni archivo .oauth/ml-tokens.json.\n' +
-        '   La API /sites/MLC/search suele responder 403 sin token.\n' +
-        '   Exportá ML_ACCESS_TOKEN o montá el token OAuth de la app ML.\n'
+        '   En Git Bash (Windows):\n' +
+        '   export ML_ACCESS_TOKEN=$(python -c "import json; print(json.load(open(\'.oauth/ml-tokens.json\'))[\'access_token\'])")\n' +
+        '   Validar: curl users/me debe ser HTTP 200.\n'
     );
+  } else if (token) {
+    console.log(`   Token: OK (len=${token.length}, ${token.slice(0, 12)}…)`);
   }
 
   const products = await loadOurProducts(source, client, { limit });
   console.log(`\n📦 Productos propios a escanear: ${products.length}`);
 
+  if (source === 'seller' && products.length === 0) {
+    console.warn(
+      '   Sin productos del seller. Revisá token y /users/{id}/items/search.'
+    );
+  }
+
   const allAlerts: CompetitorHit[] = [];
   const seen = new Set<string>();
+  let warnedSiteSearch = false;
 
   for (const product of products) {
-    const queries = buildSearchQueries(product);
-    if (!queries.length) {
-      console.log(`  · skip (sin queries): ${product.title.slice(0, 50)}`);
-      continue;
-    }
-
     process.stdout.write(`  · ${product.title.slice(0, 55)}… `);
 
     let foundForProduct = 0;
 
-    for (const { q, matchedBy } of queries) {
-      for (let page = 0; page < maxPages; page++) {
-        const offset = page * CONFIG.searchLimit;
-        let data: any;
-        try {
-          data = await client.search(q, offset);
-        } catch (e: any) {
-          console.error(`\n    ✗ search "${q}" offset=${offset}: ${e.message}`);
-          break;
+    // 1) Intento search público por queries (si no está bloqueado)
+    if (!client.siteSearchBlocked) {
+      const queries = buildSearchQueries(product);
+      for (const { q, matchedBy } of queries) {
+        if (client.siteSearchBlocked) break;
+        for (let page = 0; page < maxPages; page++) {
+          const offset = page * CONFIG.searchLimit;
+          let data: any;
+          try {
+            data = await client.search(q, offset);
+          } catch (e: any) {
+            if (!warnedSiteSearch && client.siteSearchBlocked) {
+              console.log(
+                '\n   ℹ️  /sites/MLC/search bloqueado (403). Usando fallback GTIN/catálogo.'
+              );
+              warnedSiteSearch = true;
+            } else if (!client.siteSearchBlocked) {
+              console.error(`\n    ✗ search "${q}": ${e.message}`);
+            }
+            break;
+          }
+
+          const results = data.results || [];
+          if (!results.length) break;
+
+          const hits = extractFullCompetitors(results, product, matchedBy);
+          for (const h of hits) {
+            const key = `${h.itemId}:${h.ourProductId}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            allAlerts.push(h);
+            foundForProduct++;
+          }
+
+          if (results.length < CONFIG.searchLimit) break;
         }
-
-        const results = data.results || [];
-        if (!results.length) break;
-
-        const hits = extractFullCompetitors(results, product, matchedBy);
-        for (const h of hits) {
-          const key = `${h.itemId}:${h.ourProductId}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          allAlerts.push(h);
-          foundForProduct++;
-        }
-
-        if (results.length < CONFIG.searchLimit) break;
       }
     }
 
-    console.log(
-      foundForProduct > 0 ? `⚠ ${foundForProduct} Full` : 'ok'
-    );
+    // 2) Fallback: GTIN → catálogo → ítems Full de terceros
+    if (client.siteSearchBlocked || foundForProduct === 0) {
+      const fb = await findCompetitorsFallback(client, product);
+      for (const h of fb) {
+        const key = `${h.itemId}:${h.ourProductId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        allAlerts.push(h);
+        foundForProduct++;
+      }
+    }
+
+    console.log(foundForProduct > 0 ? `⚠ ${foundForProduct} Full` : 'ok');
   }
 
   const report = buildReport(products.length, allAlerts);
@@ -117,6 +151,11 @@ async function main() {
   console.log(
     `   Listados competidores Full:      ${report.summary.totalCompetitorListings}`
   );
+  if (client.siteSearchBlocked) {
+    console.log(
+      '   Modo búsqueda: fallback GTIN/catálogo (site search 403)'
+    );
+  }
   console.log(`   JSON → ${jsonPath}`);
   console.log(`   CSV  → ${csvPath}`);
   console.log('');

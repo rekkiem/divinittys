@@ -6,9 +6,12 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export class MlApiClient {
   private token: string | undefined;
+  /** true si /sites/{site}/search devolvió 403 en esta corrida */
+  public siteSearchBlocked = false;
 
   constructor(token?: string) {
-    this.token = token || process.env.ML_ACCESS_TOKEN;
+    this.token = token || process.env.ML_ACCESS_TOKEN || undefined;
+    if (this.token && !String(this.token).trim()) this.token = undefined;
   }
 
   /** Carga token desde env o archivo .oauth (con refresh si expiró). */
@@ -36,7 +39,8 @@ export class MlApiClient {
   }
 
   private async refreshFromFile(data: TokenData): Promise<string> {
-    const clientId = process.env.ML_CLIENT_ID;
+    const clientId =
+      process.env.ML_CLIENT_ID || process.env.ML_APP_ID;
     const clientSecret = process.env.ML_CLIENT_SECRET;
     if (!clientId || !clientSecret) {
       console.warn(
@@ -82,32 +86,81 @@ export class MlApiClient {
     return h;
   }
 
+  /**
+   * Search público de listados. En muchas apps ML responde 403 (PolicyAgent).
+   * Si detectamos 403, marcamos siteSearchBlocked y el caller debe usar fallback.
+   */
   async search(q: string, offset = 0): Promise<any> {
+    if (this.siteSearchBlocked) {
+      throw new Error('ML API 403: site search blocked (use fallback)');
+    }
     const url = new URL(`${CONFIG.baseUrl}/sites/${CONFIG.siteId}/search`);
     url.searchParams.set('q', q);
     url.searchParams.set('limit', String(CONFIG.searchLimit));
     url.searchParams.set('offset', String(offset));
+    try {
+      return await this.fetchWithRetry(url.toString());
+    } catch (e: any) {
+      if (String(e.message || '').includes('403')) {
+        this.siteSearchBlocked = true;
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Listado PRIVADO de ítems del seller autenticado.
+   * Este endpoint SÍ funciona con el token OAuth del seller (a diferencia de /sites/.../search).
+   */
+  async searchSellerItems(
+    sellerId: number,
+    offset = 0,
+    limit = CONFIG.searchLimit
+  ): Promise<any> {
+    const url = new URL(
+      `${CONFIG.baseUrl}/users/${sellerId}/items/search`
+    );
+    url.searchParams.set('status', 'active');
+    url.searchParams.set('limit', String(limit));
+    url.searchParams.set('offset', String(offset));
     return this.fetchWithRetry(url.toString());
   }
 
-  /** Publicaciones activas de un seller (fuente our-products). */
-  async searchBySeller(sellerId: number, offset = 0): Promise<any> {
-    const url = new URL(`${CONFIG.baseUrl}/sites/${CONFIG.siteId}/search`);
-    url.searchParams.set('seller_id', String(sellerId));
-    url.searchParams.set('limit', String(CONFIG.searchLimit));
-    url.searchParams.set('offset', String(offset));
-    return this.fetchWithRetry(url.toString());
+  /** Multiget de ítems (máx. ~20 por request según docs ML). */
+  async getItems(itemIds: string[]): Promise<any[]> {
+    if (!itemIds.length) return [];
+    const url = `${CONFIG.baseUrl}/items?ids=${itemIds.join(',')}`;
+    const result = await this.fetchWithRetry(url);
+    if (!Array.isArray(result)) return [];
+    return result
+      .filter((r: any) => r && r.code === 200 && r.body)
+      .map((r: any) => r.body);
   }
 
   async getItem(itemId: string): Promise<any> {
     return this.fetchWithRetry(`${CONFIG.baseUrl}/items/${itemId}`);
   }
 
+  /**
+   * Buscador de productos de catálogo por identificador universal (GTIN/EAN).
+   * Requiere token. Útil cuando /sites/.../search está bloqueado.
+   */
+  async searchCatalogByIdentifier(productIdentifier: string): Promise<any> {
+    const url = new URL(`${CONFIG.baseUrl}/products/search`);
+    url.searchParams.set('status', 'active');
+    url.searchParams.set('site_id', CONFIG.siteId);
+    url.searchParams.set('product_identifier', productIdentifier);
+    return this.fetchWithRetry(url.toString());
+  }
+
+  async getCatalogProduct(productId: string): Promise<any> {
+    return this.fetchWithRetry(`${CONFIG.baseUrl}/products/${productId}`);
+  }
+
   private async fetchWithRetry(url: string, attempt = 1): Promise<any> {
     let res = await fetch(url, { headers: this.headers() });
 
     if (res.status === 401 && this.token) {
-      // Intentar refresh y una vez más
       try {
         if (fs.existsSync(CONFIG.tokenFile)) {
           const data: TokenData = JSON.parse(
