@@ -2,9 +2,7 @@
  * auth.ts — Auth.js (NextAuth v5) configuration
  *
  * Solo se usa para el flujo OAuth de Google.
- * Al completar el login de Google emitimos las mismas cookies JWT
- * (access_token / refresh_token) que usa el resto de la app,
- * de modo que useAuthStore y las APIs existentes siguen funcionando sin cambios.
+ * Tras el login, /api/auth/google-callback emite las cookies JWT de la app.
  */
 import NextAuth from 'next-auth';
 import Google from 'next-auth/providers/google';
@@ -17,11 +15,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Google({
       clientId: process.env.AUTH_GOOGLE_ID ?? process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.AUTH_GOOGLE_SECRET ?? process.env.GOOGLE_CLIENT_SECRET!,
-      allowDangerousEmailAccountLinking: true, // permite vincular si el email ya existe
+      allowDangerousEmailAccountLinking: true,
     }),
   ],
   session: {
-    strategy: 'jwt', // no usamos sessions de NextAuth; emitimos las nuestras
+    strategy: 'jwt',
   },
   pages: {
     signIn: '/cuenta/login',
@@ -35,11 +33,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
 
     async jwt({ token, user, account }) {
-      // En el primer login de Google, enriquecemos el token con datos de nuestra DB
       if (account?.provider === 'google' && user?.email) {
         const dbUser = await prisma.user.findUnique({
           where: { email: user.email },
-          select: { id: true, email: true, name: true, role: true, avatar: true },
+          select: { id: true, email: true, name: true, role: true, avatar: true, image: true },
         });
 
         if (dbUser) {
@@ -47,7 +44,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.email = dbUser.email;
           token.role = dbUser.role;
           token.name = dbUser.name;
-          token.avatar = dbUser.avatar;
+          token.avatar = dbUser.avatar ?? dbUser.image ?? null;
         }
       }
       return token;
@@ -70,15 +67,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   events: {
     async createUser({ user }) {
-      if (user.id) {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: {
-            role: 'CUSTOMER',
-            emailVerified: new Date(),
-          },
-        });
-      }
+      if (!user.id) return;
+      // Sincronizar image (Auth.js) → avatar (app) + role CUSTOMER
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          role: 'CUSTOMER',
+          emailVerified: new Date(),
+          avatar: user.image ?? undefined,
+        },
+      });
     },
   },
   secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
