@@ -6,14 +6,14 @@ import { Loader2 } from 'lucide-react';
 
 type Props = {
   label?: string;
-  /** Tras Google + Auth.js, aterriza aquí (fuera de /api/auth/*) */
+  /** Tras Auth.js, aterriza en la app; OAuthSessionBridge emite JWT */
   callbackUrl?: string;
   className?: string;
 };
 
 export default function GoogleSignInButton({
   label = 'Continuar con Google',
-  callbackUrl = '/api/oauth/google-callback',
+  callbackUrl = '/cuenta',
   className = '',
 }: Props) {
   const [loading, setLoading] = useState(false);
@@ -21,6 +21,8 @@ export default function GoogleSignInButton({
   const handleClick = async () => {
     setLoading(true);
     try {
+      // Auth.js completa OAuth y redirige a /cuenta (o callbackUrl).
+      // OAuthSessionBridge detecta la sesión y llama a /api/oauth/exchange.
       await signIn('google', {
         callbackUrl,
         redirect: true,

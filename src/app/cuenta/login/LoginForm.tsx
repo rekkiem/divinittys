@@ -28,33 +28,6 @@ export default function LoginForm() {
     }
   }, [errorParam]);
 
-  // Tras volver de Google (cookie auth_just_logged_in), hidratar el store
-  useEffect(() => {
-    const justLogged = document.cookie.includes('auth_just_logged_in=1');
-    if (!justLogged) return;
-
-    (async () => {
-      try {
-        const res = await fetch('/api/auth?action=me', { credentials: 'include' });
-        const data = await res.json();
-        if (data.success && data.data?.user) {
-          setUser(data.data.user);
-          toast.success('¡Bienvenida de vuelta!');
-          const role = data.data.user.role;
-          if (redirectTo && redirectTo.startsWith('/')) {
-            router.push(redirectTo);
-          } else if (role === 'ADMIN' || role === 'SUPER_ADMIN') {
-            router.push('/admin');
-          } else {
-            router.push('/cuenta');
-          }
-        }
-      } catch {
-        // silencioso
-      }
-    })();
-  }, [setUser, router, redirectTo]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -87,10 +60,11 @@ export default function LoginForm() {
     }
   };
 
+  // Tras Google, Auth.js redirige a /cuenta (o redirect). El bridge emite JWT.
   const googleCallback =
     redirectTo && redirectTo.startsWith('/')
-      ? `/api/oauth/google-callback?callbackUrl=${encodeURIComponent(redirectTo)}`
-      : '/api/oauth/google-callback';
+      ? redirectTo
+      : '/cuenta';
 
   return (
     <div className="min-h-screen flex">
@@ -169,12 +143,6 @@ export default function LoginForm() {
               {loading ? 'Ingresando...' : 'Ingresar'}
             </button>
           </form>
-
-          {process.env.NODE_ENV !== 'production' && (
-            <p className="mt-4 text-center font-sans text-xs text-charcoal-300">
-              Las credenciales admin se definen en ADMIN_EMAIL y ADMIN_PASSWORD.
-            </p>
-          )}
 
           <div className="mt-8 text-center">
             <p className="font-sans text-sm text-charcoal-400">
