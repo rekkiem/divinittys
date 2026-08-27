@@ -56,11 +56,10 @@ export default function RegisterPage() {
         <h1 className="font-display text-3xl font-light text-charcoal-700 mb-2">Crea tu cuenta</h1>
         <p className="font-sans text-charcoal-400 mb-6">Gratis · Sin suscripciones</p>
 
-        {/* Google OAuth */}
         <div className="mb-6">
           <GoogleSignInButton
             label="Registrarse con Google"
-            callbackUrl="/api/auth/google-callback"
+            callbackUrl="/api/oauth/google-callback"
           />
         </div>
 

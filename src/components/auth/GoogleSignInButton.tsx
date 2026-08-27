@@ -5,21 +5,15 @@ import { signIn } from 'next-auth/react';
 import { Loader2 } from 'lucide-react';
 
 type Props = {
-  /** Texto del botón */
   label?: string;
-  /** URL a la que redirigir tras el login (pasa por nuestro callback que setea JWT) */
+  /** Tras Google + Auth.js, aterriza aquí (fuera de /api/auth/*) */
   callbackUrl?: string;
   className?: string;
 };
 
-/**
- * Botón "Continuar con Google".
- * Usa NextAuth signIn('google') y redirige a /api/auth/google-callback
- * para que emitamos las cookies JWT del sistema existente.
- */
 export default function GoogleSignInButton({
   label = 'Continuar con Google',
-  callbackUrl = '/api/auth/google-callback',
+  callbackUrl = '/api/oauth/google-callback',
   className = '',
 }: Props) {
   const [loading, setLoading] = useState(false);
@@ -27,7 +21,6 @@ export default function GoogleSignInButton({
   const handleClick = async () => {
     setLoading(true);
     try {
-      // callbackUrl apunta a nuestro endpoint que setea access_token / refresh_token
       await signIn('google', {
         callbackUrl,
         redirect: true,

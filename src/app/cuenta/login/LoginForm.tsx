@@ -17,7 +17,6 @@ export default function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState({ email: '', password: '' });
 
-  // FIX: read ?redirect= param so admins land on /admin after login
   const redirectTo = searchParams?.get('redirect') ?? null;
   const errorParam = searchParams?.get('error');
 
@@ -40,7 +39,6 @@ export default function LoginForm() {
         const data = await res.json();
         if (data.success && data.data?.user) {
           setUser(data.data.user);
-          // El access token ya está en la cookie; el store lo puede dejar null o refrescar
           toast.success('¡Bienvenida de vuelta!');
           const role = data.data.user.role;
           if (redirectTo && redirectTo.startsWith('/')) {
@@ -74,7 +72,6 @@ export default function LoginForm() {
       setToken(data.data.accessToken);
       toast.success('¡Bienvenida de vuelta!');
 
-      // FIX: honour ?redirect= param; fallback to role-based default
       const role = data.data.user?.role;
       if (redirectTo && redirectTo.startsWith('/')) {
         router.push(redirectTo);
@@ -92,12 +89,11 @@ export default function LoginForm() {
 
   const googleCallback =
     redirectTo && redirectTo.startsWith('/')
-      ? `/api/auth/google-callback?callbackUrl=${encodeURIComponent(redirectTo)}`
-      : '/api/auth/google-callback';
+      ? `/api/oauth/google-callback?callbackUrl=${encodeURIComponent(redirectTo)}`
+      : '/api/oauth/google-callback';
 
   return (
     <div className="min-h-screen flex">
-      {/* Left: Form */}
       <div className="flex-1 flex items-center justify-center px-4 py-12">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -114,7 +110,6 @@ export default function LoginForm() {
           <h1 className="font-display text-4xl font-light text-charcoal-700 mb-2">Bienvenida</h1>
           <p className="font-sans text-charcoal-400 mb-8">Ingresa a tu cuenta para continuar</p>
 
-          {/* Google OAuth */}
           <div className="mb-6">
             <GoogleSignInButton
               label="Iniciar sesión con Google"
@@ -192,7 +187,6 @@ export default function LoginForm() {
         </motion.div>
       </div>
 
-      {/* Right: Visual */}
       <div className="hidden lg:flex flex-1 bg-gradient-to-br from-primary-400 via-primary-500 to-rose-400 items-center justify-center p-12">
         <div className="text-center text-white max-w-sm">
           <Sparkles className="w-16 h-16 mx-auto mb-6 opacity-80" />
