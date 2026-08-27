@@ -10,10 +10,6 @@ import NextAuth from 'next-auth';
 import Google from 'next-auth/providers/google';
 import { PrismaAdapter } from '@auth/prisma-adapter';
 import { prisma } from '@/lib/prisma';
-import {
-  signAccessToken,
-  signRefreshToken,
-} from '@/lib/auth';
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -32,14 +28,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     error: '/cuenta/login',
   },
   callbacks: {
-    async signIn({ user, account, profile }) {
-      // Solo permitimos Google por ahora
+    async signIn({ user, account }) {
       if (account?.provider !== 'google') return false;
       if (!user.email) return false;
       return true;
     },
 
-    async jwt({ token, user, account, profile }) {
+    async jwt({ token, user, account }) {
       // En el primer login de Google, enriquecemos el token con datos de nuestra DB
       if (account?.provider === 'google' && user?.email) {
         const dbUser = await prisma.user.findUnique({
@@ -59,40 +54,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
 
     async session({ session, token }) {
-      if (token.userId) {
-        session.user = {
-          ...session.user,
-          id: token.userId as string,
-          role: token.role as string,
-          avatar: token.avatar as string | null,
-        };
+      if (token.userId && session.user) {
+        session.user.id = token.userId as string;
+        session.user.role = (token.role as string) ?? 'CUSTOMER';
+        session.user.avatar = (token.avatar as string | null) ?? null;
       }
       return session;
     },
 
     async redirect({ url, baseUrl }) {
-      // Tras login exitoso de Google, redirigimos a /cuenta o a la URL relativa segura
       if (url.startsWith('/')) return `${baseUrl}${url}`;
       if (url.startsWith(baseUrl)) return url;
       return `${baseUrl}/cuenta`;
     },
   },
   events: {
-    /**
-     * Después de crear/vincular la cuenta de Google, aseguramos que el User
-     * de nuestra tabla tenga los campos mínimos y emitimos las cookies JWT.
-     * Nota: la emisión real de cookies se hace en la página de callback
-     * (ver /cuenta/login/google-callback) porque events no puede setear cookies de respuesta.
-     */
     async createUser({ user }) {
-      // El adapter ya creó el User. Aseguramos role y emailVerified.
       if (user.id) {
         await prisma.user.update({
           where: { id: user.id },
           data: {
             role: 'CUSTOMER',
             emailVerified: new Date(),
-            // passwordHash queda null (opcional)
           },
         });
       }
