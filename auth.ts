@@ -9,6 +9,20 @@ import Google from 'next-auth/providers/google';
 import { PrismaAdapter } from '@auth/prisma-adapter';
 import { prisma } from '@/lib/prisma';
 
+/** URL pública de la app (nunca 0.0.0.0 ni localhost en prod/prep). */
+function publicBaseUrl(fallback?: string): string {
+  const fromEnv =
+    process.env.AUTH_URL ||
+    process.env.NEXTAUTH_URL ||
+    process.env.NEXT_PUBLIC_APP_URL;
+  if (fromEnv && !fromEnv.includes('0.0.0.0') && !fromEnv.includes('localhost')) {
+    return fromEnv.replace(/\/$/, '');
+  }
+  if (fromEnv) return fromEnv.replace(/\/$/, '');
+  if (fallback && !fallback.includes('0.0.0.0')) return fallback.replace(/\/$/, '');
+  return 'https://prep.divinittys.cl';
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   providers: [
@@ -60,15 +74,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
 
     async redirect({ url, baseUrl }) {
-      if (url.startsWith('/')) return `${baseUrl}${url}`;
-      if (url.startsWith(baseUrl)) return url;
-      return `${baseUrl}/cuenta`;
+      const root = publicBaseUrl(baseUrl);
+      // Rutas relativas → URL pública
+      if (url.startsWith('/')) return `${root}${url}`;
+      // Misma origin o baseUrl interno (0.0.0.0) → reescribir a pública
+      try {
+        const u = new URL(url);
+        if (u.hostname === '0.0.0.0' || u.hostname === 'localhost' || u.hostname === '127.0.0.1') {
+          return `${root}${u.pathname}${u.search}`;
+        }
+        if (url.startsWith(root) || url.startsWith(baseUrl)) return url.startsWith(root) ? url : `${root}${u.pathname}${u.search}`;
+      } catch {
+        // ignore
+      }
+      return `${root}/cuenta`;
     },
   },
   events: {
     async createUser({ user }) {
       if (!user.id) return;
-      // Sincronizar image (Auth.js) → avatar (app) + role CUSTOMER
       await prisma.user.update({
         where: { id: user.id },
         data: {
