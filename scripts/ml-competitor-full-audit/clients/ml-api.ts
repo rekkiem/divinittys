@@ -14,7 +14,6 @@ export class MlApiClient {
     if (this.token && !String(this.token).trim()) this.token = undefined;
   }
 
-  /** Carga token desde env o archivo .oauth (con refresh si expiró). */
   async ensureToken(): Promise<string | undefined> {
     if (this.token) return this.token;
 
@@ -86,10 +85,6 @@ export class MlApiClient {
     return h;
   }
 
-  /**
-   * Search público de listados. En muchas apps ML responde 403 (PolicyAgent).
-   * Si detectamos 403, marcamos siteSearchBlocked y el caller debe usar fallback.
-   */
   async search(q: string, offset = 0): Promise<any> {
     if (this.siteSearchBlocked) {
       throw new Error('ML API 403: site search blocked (use fallback)');
@@ -108,10 +103,6 @@ export class MlApiClient {
     }
   }
 
-  /**
-   * Listado PRIVADO de ítems del seller autenticado.
-   * Este endpoint SÍ funciona con el token OAuth del seller (a diferencia de /sites/.../search).
-   */
   async searchSellerItems(
     sellerId: number,
     offset = 0,
@@ -126,7 +117,6 @@ export class MlApiClient {
     return this.fetchWithRetry(url.toString());
   }
 
-  /** Multiget de ítems (máx. ~20 por request según docs ML). */
   async getItems(itemIds: string[]): Promise<any[]> {
     if (!itemIds.length) return [];
     const url = `${CONFIG.baseUrl}/items?ids=${itemIds.join(',')}`;
@@ -141,15 +131,25 @@ export class MlApiClient {
     return this.fetchWithRetry(`${CONFIG.baseUrl}/items/${itemId}`);
   }
 
-  /**
-   * Buscador de productos de catálogo por identificador universal (GTIN/EAN).
-   * Requiere token. Útil cuando /sites/.../search está bloqueado.
-   */
+  /** Catálogo por GTIN/EAN. */
   async searchCatalogByIdentifier(productIdentifier: string): Promise<any> {
     const url = new URL(`${CONFIG.baseUrl}/products/search`);
     url.searchParams.set('status', 'active');
     url.searchParams.set('site_id', CONFIG.siteId);
     url.searchParams.set('product_identifier', productIdentifier);
+    return this.fetchWithRetry(url.toString());
+  }
+
+  /**
+   * Catálogo por palabras clave (nombre de producto).
+   * Funciona con token aunque /sites/.../search esté en 403.
+   */
+  async searchCatalogByQuery(q: string, limit = 10): Promise<any> {
+    const url = new URL(`${CONFIG.baseUrl}/products/search`);
+    url.searchParams.set('status', 'active');
+    url.searchParams.set('site_id', CONFIG.siteId);
+    url.searchParams.set('q', q);
+    url.searchParams.set('limit', String(limit));
     return this.fetchWithRetry(url.toString());
   }
 
@@ -170,7 +170,7 @@ export class MlApiClient {
           res = await fetch(url, { headers: this.headers() });
         }
       } catch {
-        /* seguir con el error original */
+        /* seguir */
       }
     }
 
