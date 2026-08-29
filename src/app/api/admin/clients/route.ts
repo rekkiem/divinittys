@@ -1,15 +1,15 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { withAdmin, isAdminUser } from '@/lib/admin-auth';
+import { withAdmin } from '@/lib/admin-auth';
 import { ok, serverError } from '@/lib/utils/api';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  try {
-    const { user, error } = await withAdmin(req);
-    if (!isAdminUser(user) || error) return error!;
+  const { error } = await withAdmin(req);
+  if (error) return error;
 
+  try {
     const { searchParams } = new URL(req.url);
     const q = searchParams.get('q')?.trim();
     const status = searchParams.get('status'); // active | inactive | all
