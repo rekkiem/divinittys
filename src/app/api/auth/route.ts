@@ -104,6 +104,11 @@ export async function POST(req: NextRequest) {
       const user = await prisma.user.findFirst({ where: { email, isActive: true } });
       if (!user) return unauthorized('Credenciales inválidas');
 
+      // Usuarios creados solo con Google no tienen passwordHash
+      if (!user.passwordHash) {
+        return unauthorized('Esta cuenta se registró con Google. Usa "Iniciar sesión con Google".');
+      }
+
       const valid = await bcrypt.compare(password, user.passwordHash);
       if (!valid) return unauthorized('Credenciales inválidas');
 
