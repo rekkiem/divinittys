@@ -10,7 +10,9 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma/
-RUN npm ci --include=dev
+# --legacy-peer-deps: next-auth@5 pide nodemailer ^7|^8 (optional); el proyecto usa 6.9.x
+# y hay otros peers (p.ej. bull-board/hono). npm ci estricto rompe el build.
+RUN npm install --include=dev --legacy-peer-deps
 RUN npx prisma generate
 
 FROM base AS development
@@ -53,6 +55,10 @@ ENV DATABASE_URL="postgresql://stub:stub@localhost/stub"
 ENV JWT_SECRET="build-time-stub-not-used-at-runtime"
 ENV JWT_REFRESH_SECRET="build-time-stub-not-used-at-runtime"
 ENV NEXT_PUBLIC_APP_URL="https://divinittys.cl"
+# Stubs para build: Auth.js lee estas al importar auth.ts
+ENV AUTH_SECRET="build-time-stub-not-used-at-runtime"
+ENV AUTH_GOOGLE_ID="build-time-stub"
+ENV AUTH_GOOGLE_SECRET="build-time-stub"
 RUN npm run build
 
 FROM base AS production
