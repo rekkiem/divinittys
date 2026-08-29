@@ -1,11 +1,9 @@
 export const dynamic = 'force-dynamic';
 import { prisma } from '@/lib/prisma';
-import { Users } from 'lucide-react';
-import Link from 'next/link';
 import ClientesTableClient from './ClientesTableClient';
 
 async function getClients() {
-  return prisma.user.findMany({
+  const rows = await prisma.user.findMany({
     where: { role: 'CUSTOMER' },
     orderBy: { createdAt: 'desc' },
     take: 300,
@@ -19,6 +17,12 @@ async function getClients() {
       _count: { select: { orders: true, addresses: true } },
     },
   });
+
+  // Serializar fechas para el Client Component
+  return rows.map((c) => ({
+    ...c,
+    createdAt: c.createdAt.toISOString(),
+  }));
 }
 
 export default async function ClientesPage() {
