@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { withAdmin, isAdminUser } from '@/lib/admin-auth';
+import { withAdmin } from '@/lib/admin-auth';
 import { ok, badRequest, notFound, serverError, forbidden } from '@/lib/utils/api';
 import { isValidChileCommune } from '@/lib/chile/geo';
 
@@ -26,10 +26,10 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string; addressId: string } }
 ) {
-  try {
-    const { user, error } = await withAdmin(req);
-    if (!isAdminUser(user) || error) return error!;
+  const { error } = await withAdmin(req);
+  if (error) return error;
 
+  try {
     const existing = await prisma.address.findFirst({
       where: { id: params.addressId, userId: params.id },
     });
@@ -77,10 +77,10 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: { id: string; addressId: string } }
 ) {
-  try {
-    const { user, error } = await withAdmin(req);
-    if (!isAdminUser(user) || error) return error!;
+  const { error } = await withAdmin(req);
+  if (error) return error;
 
+  try {
     const existing = await prisma.address.findFirst({
       where: { id: params.addressId, userId: params.id },
       include: { _count: { select: { orders: true } } },
