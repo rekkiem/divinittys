@@ -6,42 +6,48 @@ import { ArrowLeft } from 'lucide-react';
 import ClienteDetailClient from './ClienteDetailClient';
 
 async function getClient(id: string) {
-  return prisma.user.findFirst({
-    where: { id, role: 'CUSTOMER' },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      phone: true,
-      isActive: true,
-      createdAt: true,
-      updatedAt: true,
-      passwordHash: true,
-      addresses: {
-        orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }],
-      },
-      orders: {
-        orderBy: { createdAt: 'desc' },
-        take: 30,
-        select: {
-          id: true,
-          orderNumber: true,
-          status: true,
-          paymentStatus: true,
-          total: true,
-          createdAt: true,
+  // No seleccionar passwordHash: Prisma 6 + filas NULL → P2032 en runtime.
+  // hasPassword se deriva con count paralelo.
+  const [client, hasPassword] = await Promise.all([
+    prisma.user.findFirst({
+      where: { id, role: 'CUSTOMER' },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        addresses: {
+          orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }],
         },
+        orders: {
+          orderBy: { createdAt: 'desc' },
+          take: 30,
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            paymentStatus: true,
+            total: true,
+            createdAt: true,
+          },
+        },
+        _count: { select: { orders: true, addresses: true } },
       },
-      _count: { select: { orders: true, addresses: true } },
-    },
-  });
+    }),
+    prisma.user
+      .count({ where: { id, role: 'CUSTOMER', passwordHash: { not: null } } })
+      .then((c) => c > 0),
+  ]);
+
+  return client ? { ...client, hasPassword } : null;
 }
 
 export default async function ClienteDetailPage({ params }: { params: { id: string } }) {
   const client = await getClient(params.id);
   if (!client) notFound();
-
-  const { passwordHash, ...safe } = client;
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -62,8 +68,12 @@ export default async function ClienteDetailPage({ params }: { params: { id: stri
 
       <ClienteDetailClient
         client={{
-          ...safe,
-          hasPassword: Boolean(passwordHash),
+          id: client.id,
+          name: client.name,
+          email: client.email,
+          phone: client.phone,
+          isActive: client.isActive,
+          hasPassword: client.hasPassword,
           createdAt: client.createdAt.toISOString(),
           updatedAt: client.updatedAt.toISOString(),
           addresses: client.addresses.map((a) => ({
@@ -76,6 +86,7 @@ export default async function ClienteDetailPage({ params }: { params: { id: stri
             total: Number(o.total),
             createdAt: o.createdAt.toISOString(),
           })),
+          _count: client._count,
         }}
       />
     </div>
