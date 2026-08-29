@@ -14,35 +14,42 @@ const updateSchema = z.object({
 });
 
 async function getClientOr404(id: string) {
-  return prisma.user.findFirst({
-    where: { id, role: 'CUSTOMER' },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      phone: true,
-      isActive: true,
-      createdAt: true,
-      updatedAt: true,
-      passwordHash: true,
-      addresses: {
-        orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }],
-      },
-      orders: {
-        orderBy: { createdAt: 'desc' },
-        take: 20,
-        select: {
-          id: true,
-          orderNumber: true,
-          status: true,
-          paymentStatus: true,
-          total: true,
-          createdAt: true,
+  // No seleccionar passwordHash: evita P2032 con filas NULL (OAuth).
+  const [client, hasPassword] = await Promise.all([
+    prisma.user.findFirst({
+      where: { id, role: 'CUSTOMER' },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        addresses: {
+          orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }],
         },
+        orders: {
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            paymentStatus: true,
+            total: true,
+            createdAt: true,
+          },
+        },
+        _count: { select: { orders: true, addresses: true } },
       },
-      _count: { select: { orders: true, addresses: true } },
-    },
-  });
+    }),
+    prisma.user
+      .count({ where: { id, role: 'CUSTOMER', passwordHash: { not: null } } })
+      .then((c) => c > 0),
+  ]);
+
+  return client ? { ...client, hasPassword } : null;
 }
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
@@ -52,14 +59,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   try {
     const client = await getClientOr404(params.id);
     if (!client) return notFound('Cliente no encontrado');
-
-    const { passwordHash, ...safe } = client;
-    return ok({
-      client: {
-        ...safe,
-        hasPassword: Boolean(passwordHash),
-      },
-    });
+    return ok({ client });
   } catch (e) {
     return serverError(e);
   }
@@ -79,7 +79,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const body = await req.json();
     const action = body?.action as string | undefined;
 
-    // ─── Reset password ───
     if (action === 'reset-password') {
       const tempPassword =
         typeof body.tempPassword === 'string' && body.tempPassword.length >= 8
@@ -90,7 +89,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         where: { id: params.id },
         data: { passwordHash },
       });
-      // Invalidar sesiones activas del cliente
       await prisma.session.deleteMany({ where: { userId: params.id } });
       return ok({
         message: 'Contraseña reiniciada. Se cerraron las sesiones activas.',
@@ -98,7 +96,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       });
     }
 
-    // ─── Update perfil / isActive ───
     const data = updateSchema.parse(body);
     const updated = await prisma.user.update({
       where: { id: params.id },
@@ -117,7 +114,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       },
     });
 
-    // Si se inactiva, cerrar sesiones
     if (data.isActive === false) {
       await prisma.session.deleteMany({ where: { userId: params.id } });
     }
@@ -149,7 +145,6 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       );
     }
 
-    // Cascade: addresses, sessions, accounts, wishlist, reviews, hairProfile
     await prisma.user.delete({ where: { id: params.id } });
     return ok({ message: 'Cliente eliminado' });
   } catch (e) {
