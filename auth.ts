@@ -1,15 +1,12 @@
 /**
- * auth.ts — Auth.js (NextAuth v5) configuration
- *
- * Solo se usa para el flujo OAuth de Google.
- * Tras el login, /api/auth/google-callback emite las cookies JWT de la app.
+ * auth.ts — Auth.js (NextAuth v5)
+ * basePath: /api/nextauth  → no compite con /api/auth (JWT propio)
  */
 import NextAuth from 'next-auth';
 import Google from 'next-auth/providers/google';
 import { PrismaAdapter } from '@auth/prisma-adapter';
 import { prisma } from '@/lib/prisma';
 
-/** URL pública de la app (nunca 0.0.0.0 ni localhost en prod/prep). */
 function publicBaseUrl(fallback?: string): string {
   const fromEnv =
     process.env.AUTH_URL ||
@@ -24,6 +21,8 @@ function publicBaseUrl(fallback?: string): string {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  // Aislado de nuestra API JWT en /api/auth
+  basePath: '/api/nextauth',
   adapter: PrismaAdapter(prisma),
   providers: [
     Google({
@@ -75,19 +74,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
     async redirect({ url, baseUrl }) {
       const root = publicBaseUrl(baseUrl);
-      // Rutas relativas → URL pública
       if (url.startsWith('/')) return `${root}${url}`;
-      // Misma origin o baseUrl interno (0.0.0.0) → reescribir a pública
       try {
         const u = new URL(url);
         if (u.hostname === '0.0.0.0' || u.hostname === 'localhost' || u.hostname === '127.0.0.1') {
           return `${root}${u.pathname}${u.search}`;
         }
-        if (url.startsWith(root) || url.startsWith(baseUrl)) return url.startsWith(root) ? url : `${root}${u.pathname}${u.search}`;
+        if (url.startsWith(root)) return url;
+        return `${root}${u.pathname}${u.search}`;
       } catch {
-        // ignore
+        return `${root}/cuenta`;
       }
-      return `${root}/cuenta`;
     },
   },
   events: {

@@ -6,7 +6,6 @@ import { Loader2 } from 'lucide-react';
 
 type Props = {
   label?: string;
-  /** Tras Auth.js, aterriza en la app; OAuthSessionBridge emite JWT */
   callbackUrl?: string;
   className?: string;
 };
@@ -21,8 +20,7 @@ export default function GoogleSignInButton({
   const handleClick = async () => {
     setLoading(true);
     try {
-      // Auth.js completa OAuth y redirige a /cuenta (o callbackUrl).
-      // OAuthSessionBridge detecta la sesión y llama a /api/oauth/exchange.
+      // basePath de SessionProvider = /api/nextauth
       await signIn('google', {
         callbackUrl,
         redirect: true,

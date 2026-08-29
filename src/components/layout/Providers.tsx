@@ -23,7 +23,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient(queryClientConfig));
 
   return (
-    <SessionProvider>
+    <SessionProvider basePath="/api/nextauth">
       <QueryClientProvider client={queryClient}>
         <OAuthSessionBridge />
         {children}
