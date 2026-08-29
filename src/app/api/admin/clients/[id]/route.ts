@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
-import { withAdmin, isAdminUser } from '@/lib/admin-auth';
+import { withAdmin } from '@/lib/admin-auth';
 import { ok, badRequest, notFound, serverError, forbidden } from '@/lib/utils/api';
 
 export const dynamic = 'force-dynamic';
@@ -46,10 +46,10 @@ async function getClientOr404(id: string) {
 }
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const { user, error } = await withAdmin(req);
-    if (!isAdminUser(user) || error) return error!;
+  const { error } = await withAdmin(req);
+  if (error) return error;
 
+  try {
     const client = await getClientOr404(params.id);
     if (!client) return notFound('Cliente no encontrado');
 
@@ -66,10 +66,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const { user, error } = await withAdmin(req);
-    if (!isAdminUser(user) || error) return error!;
+  const { error } = await withAdmin(req);
+  if (error) return error;
 
+  try {
     const existing = await prisma.user.findFirst({
       where: { id: params.id, role: 'CUSTOMER' },
       select: { id: true },
@@ -130,10 +130,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const { user, error } = await withAdmin(req);
-    if (!isAdminUser(user) || error) return error!;
+  const { error } = await withAdmin(req);
+  if (error) return error;
 
+  try {
     const client = await prisma.user.findFirst({
       where: { id: params.id, role: 'CUSTOMER' },
       select: {
