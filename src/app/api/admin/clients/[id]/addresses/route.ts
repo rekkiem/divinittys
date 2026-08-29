@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { withAdmin, isAdminUser } from '@/lib/admin-auth';
+import { withAdmin } from '@/lib/admin-auth';
 import { ok, created, badRequest, notFound, serverError } from '@/lib/utils/api';
 import { isValidChileCommune } from '@/lib/chile/geo';
 
@@ -30,10 +30,10 @@ async function ensureCustomer(id: string) {
 }
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const { user, error } = await withAdmin(req);
-    if (!isAdminUser(user) || error) return error!;
+  const { error } = await withAdmin(req);
+  if (error) return error;
 
+  try {
     if (!(await ensureCustomer(params.id))) return notFound('Cliente no encontrado');
 
     const addresses = await prisma.address.findMany({
@@ -47,10 +47,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const { user, error } = await withAdmin(req);
-    if (!isAdminUser(user) || error) return error!;
+  const { error } = await withAdmin(req);
+  if (error) return error;
 
+  try {
     if (!(await ensureCustomer(params.id))) return notFound('Cliente no encontrado');
 
     const data = AddressSchema.parse(await req.json());
