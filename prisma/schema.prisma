@@ -375,7 +375,7 @@ model Shipment {
   labelUrl        String?
   status          ShippingStatus @default(PENDING)
   estimatedDays   Int?
-  shippingCost    Decimal?       @db.Decimal(8, 3)
+  shippingCost    Decimal?       @db.Decimal(10, 2)
   packageWeight   Decimal?       @db.Decimal(8, 3)
   packageDimensions Json?
   originData      Json?
