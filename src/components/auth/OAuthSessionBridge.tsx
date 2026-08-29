@@ -2,24 +2,25 @@
 
 import { useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
 
 /**
- * Si Auth.js tiene sesión (login Google OK) pero Zustand aún no tiene user,
- * llama a /api/oauth/exchange para emitir las cookies JWT de la app.
+ * Si Auth.js tiene sesión (Google OK) y Zustand no tiene user,
+ * POST /api/oauth/exchange → cookies JWT + store.
  */
 export default function OAuthSessionBridge() {
   const { data: session, status } = useSession();
   const { user, setUser, setToken } = useAuthStore();
   const router = useRouter();
+  const pathname = usePathname();
   const once = useRef(false);
 
   useEffect(() => {
     if (once.current) return;
     if (status !== 'authenticated' || !session?.user?.email) return;
-    if (user) return; // ya hay sesión propia
+    if (user) return;
 
     once.current = true;
 
@@ -29,19 +30,23 @@ export default function OAuthSessionBridge() {
           method: 'POST',
           credentials: 'include',
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
+
         if (!res.ok || !data.success) {
-          console.error('[OAuthSessionBridge]', data);
+          console.error('[OAuthSessionBridge] exchange failed', res.status, data);
+          once.current = false;
           return;
         }
+
         setUser(data.data.user);
         setToken(data.data.accessToken);
         toast.success('¡Sesión iniciada con Google!');
+
         const role = data.data.user?.role;
         if (role === 'ADMIN' || role === 'SUPER_ADMIN') {
-          router.push('/admin');
-        } else if (typeof window !== 'undefined' && window.location.pathname.includes('/login')) {
-          router.push('/cuenta');
+          router.replace('/admin');
+        } else if (pathname?.includes('/login') || pathname?.includes('/registro')) {
+          router.replace('/cuenta');
         } else {
           router.refresh();
         }
@@ -50,7 +55,7 @@ export default function OAuthSessionBridge() {
         once.current = false;
       }
     })();
-  }, [status, session, user, setUser, setToken, router]);
+  }, [status, session, user, setUser, setToken, router, pathname]);
 
   return null;
 }
