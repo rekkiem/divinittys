@@ -47,7 +47,7 @@ export default function Footer() {
             <div className="space-y-2">
               {[
                 { Icon: MapPin, text: 'Santiago, Chile', href: '/contacto' },
-                { Icon: Phone, text: '+56 9 8902 4643', href: 'https://wa.me/56989024643' },
+                //{ Icon: Phone, text: '+56 9 8902 4643', href: 'https://wa.me/56989024643' }, 
                 { Icon: Mail, text: 'contacto@divinittys.cl', href: 'mailto:contacto@divinittys.cl' },
               ].map(({ Icon, text, href }) => (
                 <a
@@ -64,7 +64,7 @@ export default function Footer() {
 
             <div className="flex gap-3">
               <a
-                href="https://www.instagram.com/"
+                href="https://www.instagram.com/divinitty4/"
                 target="_blank"
                 rel="noreferrer"
                 aria-label="Instagram"
@@ -73,7 +73,7 @@ export default function Footer() {
                 <Instagram className="w-4 h-4" />
               </a>
               <a
-                href="https://www.facebook.com/"
+                href="https://www.facebook.com/divinittys/"
                 target="_blank"
                 rel="noreferrer"
                 aria-label="Facebook"
