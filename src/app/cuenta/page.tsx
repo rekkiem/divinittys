@@ -1,23 +1,54 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 import { useAuthStore } from '@/hooks/useAuth';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
-import { User, ShoppingBag, Heart, LogOut, Settings, Sparkles } from 'lucide-react';
+import { User, ShoppingBag, Heart, LogOut, Settings, Sparkles, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export default function AccountPage() {
   const { user, logout } = useAuthStore();
+  const { status: oauthStatus } = useSession();
   const router = useRouter();
+  const [waited, setWaited] = useState(false);
+
+  // Dar tiempo al OAuthSessionBridge si hay sesión Google pero aún no JWT/Zustand
+  useEffect(() => {
+    if (user) return;
+    if (oauthStatus === 'loading') return;
+
+    if (oauthStatus === 'authenticated') {
+      // Bridge debería emitir JWT; esperamos un poco antes de mandar a login
+      const t = setTimeout(() => setWaited(true), 2500);
+      return () => clearTimeout(t);
+    }
+
+    // Sin Auth.js ni Zustand → login
+    router.replace('/cuenta/login');
+  }, [user, oauthStatus, router]);
 
   useEffect(() => {
-    if (!user) router.push('/cuenta/login');
-  }, [user, router]);
+    if (waited && !user) {
+      router.replace('/cuenta/login');
+    }
+  }, [waited, user, router]);
 
-  if (!user) return null;
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3 text-charcoal-400">
+          <Loader2 className="w-8 h-8 animate-spin text-primary-400" />
+          <p className="font-sans text-sm">
+            {oauthStatus === 'authenticated' ? 'Completando inicio de sesión…' : 'Cargando…'}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const menuItems = [
     { href: '/cuenta/pedidos', Icon: ShoppingBag, label: 'Mis pedidos', desc: 'Historial y seguimiento' },
@@ -31,11 +62,15 @@ export default function AccountPage() {
       <Navbar />
       <main className="max-w-3xl mx-auto px-4 py-12">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          {/* Profile card */}
           <div className="bg-gradient-to-br from-primary-50 to-rose-50 rounded-3xl border border-primary-200 p-8 mb-8">
             <div className="flex items-center gap-5">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-400 to-rose-400 flex items-center justify-center text-2xl text-white font-display font-light">
-                {user.name?.[0]?.toUpperCase() || <User className="w-7 h-7" />}
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-400 to-rose-400 flex items-center justify-center text-2xl text-white font-display font-light overflow-hidden">
+                {user.avatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={user.avatar} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  user.name?.[0]?.toUpperCase() || <User className="w-7 h-7" />
+                )}
               </div>
               <div>
                 <h1 className="font-display text-3xl font-light text-charcoal-700">¡Hola, {user.name?.split(' ')[0]}!</h1>
@@ -44,7 +79,6 @@ export default function AccountPage() {
             </div>
           </div>
 
-          {/* Menu */}
           <div className="grid grid-cols-2 gap-4">
             {menuItems.map(({ href, Icon, label, desc }) => (
               <Link key={href} href={href}>
@@ -58,7 +92,10 @@ export default function AccountPage() {
           </div>
 
           <button
-            onClick={() => { logout(); router.push('/'); }}
+            onClick={() => {
+              logout();
+              router.push('/');
+            }}
             className="w-full mt-6 flex items-center justify-center gap-2 py-3 rounded-xl border border-champagne-200 hover:border-rose-300 hover:text-rose-500 font-sans text-sm font-medium text-charcoal-400 transition-colors"
           >
             <LogOut className="w-4 h-4" />

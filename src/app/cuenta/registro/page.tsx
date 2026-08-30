@@ -7,6 +7,7 @@ import { Sparkles, Loader2, Eye, EyeOff } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
+import GoogleSignInButton from '@/components/auth/GoogleSignInButton';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -53,7 +54,23 @@ export default function RegisterPage() {
         </Link>
 
         <h1 className="font-display text-3xl font-light text-charcoal-700 mb-2">Crea tu cuenta</h1>
-        <p className="font-sans text-charcoal-400 mb-8">Gratis · Sin suscripciones</p>
+        <p className="font-sans text-charcoal-400 mb-6">Gratis · Sin suscripciones</p>
+
+        <div className="mb-6">
+          <GoogleSignInButton
+            label="Registrarse con Google"
+            callbackUrl="/cuenta"
+          />
+        </div>
+
+        <div className="relative mb-6">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-champagne-200" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-white px-3 text-charcoal-400 font-sans tracking-wider">o con email</span>
+          </div>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {[
