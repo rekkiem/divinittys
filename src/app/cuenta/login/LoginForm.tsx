@@ -80,8 +80,11 @@ export default function LoginForm() {
             <span className="font-display text-2xl font-light tracking-widest text-charcoal-600">DIVINITTYS</span>
           </Link>
 
-          <h1 className="font-display text-4xl font-light text-charcoal-700 mb-2">Bienvenida</h1>
-          <p className="font-sans text-charcoal-400 mb-8">Ingresa a tu cuenta para continuar</p>
+          <h1 className="font-display text-4xl font-light text-charcoal-700 mb-2">Bienvenida a DIVINITTYS</h1>
+          <p className="font-sans text-charcoal-400 mb-6">
+            Inicia sesión en DIVINITTYS para gestionar tu perfil, revisar el estado de tus compras,
+            historial de pedidos y guardar productos favoritos.
+          </p>
 
           <div className="mb-6">
             <GoogleSignInButton
@@ -159,7 +162,8 @@ export default function LoginForm() {
           <Sparkles className="w-16 h-16 mx-auto mb-6 opacity-80" />
           <h2 className="font-display text-4xl font-light mb-4">Tu mundo de belleza</h2>
           <p className="font-sans text-white/70 leading-relaxed">
-            Accede a tu historial de compras, lista de deseos y recomendaciones personalizadas.
+            En DIVINITTYS accede a tu historial de compras, lista de deseos y recomendaciones
+            personalizadas.
           </p>
         </div>
       </div>
