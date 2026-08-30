@@ -13,7 +13,7 @@ describe('formatShippingAddress', () => {
       city: 'Santiago',
       region: 'Metropolitana',
       email: 'rekkiem@gmail.com',
-      phone: '+56989024643',
+      phone: '+56989024587',
     });
     expect(f.fullName).toBe('Rafael Briones');
     expect(f.line1).toContain('Los Alerces 123');
