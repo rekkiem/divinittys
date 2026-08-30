@@ -59,3 +59,19 @@ backups/
 backups/
 *.bak
 *.local-backup
+
+# --- REGLAS FALTANTES DETECTADAS EN PRODUCCIÓN ---
+# Archivo de entorno sin punto inicial
+env.production
+
+# Archivo comprimido con credenciales
+env.zip
+
+# Copias de seguridad con sufijos de fecha específicos de producción
+.env.production.backup-*
+
+# Archivos de datos operacionales en Excel
+*.xlsx
+
+# Respaldos de código con marcas de tiempo en subcarpetas (ej. src/lib/...)
+*.backup-*

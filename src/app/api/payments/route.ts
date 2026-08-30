@@ -5,6 +5,7 @@
  * POST /api/payments?action=webpay-init      → init Webpay transaction
  * POST /api/payments?action=webpay-commit    → commit after redirect
  * POST /api/payments?action=mp-preference   → create MP preference
+ * POST /api/payments?action=mp-confirm      → confirm MP payment after return
  * POST /api/payments                         → auto-detect from body.provider
  * GET  /api/payments                         → MercadoPago webhook (IPN legacy)
  * Preferencias nuevas notifican a /api/webhooks/mercadopago (POST)
@@ -59,42 +60,40 @@ export async function POST(req: NextRequest) {
       action = provider === 'MERCADOPAGO' ? 'mp-preference' : 'webpay-init';
     }
 
+    // ── Webpay init ─────────────────────────────────────────────────
     if (action === 'webpay-init') {
       const { orderId } = z.object({ orderId: z.string() }).parse(body);
-
       const order = await findOrderAndValidate(orderId);
       const total = Number(order.total);
 
-      const tbk = await createWebpayTransaction({
-        buyOrder: order.orderNumber.slice(0, 26),
-        sessionId: `${orderId.slice(0, 8)}-${Date.now()}`,
-        amount: total,
+      const result = await createWebpayTransaction({
+        buyOrder: order.orderNumber.replace(/[^a-zA-Z0-9]/g, '').slice(0, 26),
+        sessionId: orderId.slice(0, 61),
+        amount: Math.round(total),
         returnUrl: `${APP_URL}/checkout/webpay-return`,
       });
 
       await ensurePaymentRecord(orderId, 'WEBPAY', total);
       await prisma.payment.update({
         where: { orderId },
-        data: { token: tbk.token, status: 'PROCESSING' },
+        data: { externalId: result.token, status: 'PROCESSING' },
       });
 
-      return ok({ token: tbk.token, url: tbk.url });
+      return ok({ url: result.url, token: result.token });
     }
 
+    // ── Webpay commit ───────────────────────────────────────────────
     if (action === 'webpay-commit') {
       const { token_ws } = z.object({ token_ws: z.string() }).parse(body);
-
       const payment = await prisma.payment.findFirst({
-        where: { token: token_ws },
+        where: { externalId: token_ws },
         include: { order: true },
       });
-      if (!payment) return notFound('Pago no encontrado');
+      if (!payment) return notFound('Transacción no encontrada');
 
       const result = await commitWebpayTransaction(token_ws);
-      const approved =
-        result && (result as any).response_code === 0 && (result as any).status === 'AUTHORIZED';
 
-      if (approved) {
+      if ((result as any).status === 'AUTHORIZED' || (result as any).response_code === 0) {
         await markPaymentPaid({
           paymentId: payment.id,
           orderId: payment.orderId,
@@ -161,7 +160,80 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    return badRequest('Acción no válida. Use: webpay-init, webpay-commit, mp-preference');
+    if (action === 'mp-confirm') {
+      const schema = z.object({
+        paymentId: z.string().min(1),
+        orderId: z.string().optional(),
+        orderNumber: z.string().optional(),
+      });
+      const { paymentId, orderId, orderNumber } = schema.parse(body);
+
+      if (!process.env.MERCADOPAGO_ACCESS_TOKEN) {
+        return badRequest('MercadoPago no configurado');
+      }
+
+      const res = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+        headers: { Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}` },
+      });
+      if (!res.ok) {
+        return badRequest('No se pudo validar el pago en Mercado Pago');
+      }
+
+      const mpPayment = await res.json();
+
+      const payment = await prisma.payment.findFirst({
+        where: orderId
+          ? { orderId }
+          : {
+              order: {
+                orderNumber:
+                  orderNumber ||
+                  (mpPayment.external_reference
+                    ? String(mpPayment.external_reference)
+                    : ''),
+              },
+            },
+        include: { order: true },
+      });
+
+      if (!payment) {
+        return notFound('Pago/pedido no encontrado');
+      }
+
+      if (mpPayment.status === 'approved') {
+        await markPaymentPaid({
+          paymentId: payment.id,
+          orderId: payment.orderId,
+          responseData: mpPayment,
+          externalId: String(mpPayment.id ?? paymentId),
+          paymentMethod: mpPayment.payment_method_id ?? null,
+          installments: Number(mpPayment.installments || 1),
+        });
+        return ok({
+          success: true,
+          orderNumber: payment.order.orderNumber,
+          status: 'PAID',
+        });
+      }
+
+      if (['rejected', 'cancelled', 'refunded'].includes(String(mpPayment.status || ''))) {
+        await markPaymentFailed({
+          paymentId: payment.id,
+          orderId: payment.orderId,
+          reason: `Pago MercadoPago ${mpPayment.status}`,
+          responseData: mpPayment,
+        });
+        return ok({ success: false, status: mpPayment.status });
+      }
+
+      return ok({
+        success: false,
+        status: mpPayment.status,
+        message: 'Pago aún no aprobado',
+      });
+    }
+
+    return badRequest('Acción no válida. Use: webpay-init, webpay-commit, mp-preference, mp-confirm');
   } catch (err: any) {
     if (err.code === 404) return NextResponse.json({ error: err.message }, { status: 404 });
     if (err.code === 400) return NextResponse.json({ error: err.message }, { status: 400 });
