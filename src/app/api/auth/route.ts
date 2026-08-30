@@ -154,19 +154,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'logout') {
-      // Preferir borrar SOLO la sesión actual (refresh cookie)
       const refreshToken = req.cookies.get('refresh_token')?.value;
       if (refreshToken) {
         await prisma.session.deleteMany({ where: { refreshToken } });
       } else {
-        // Fallback: si no hay refresh cookie, intentar por access token (sesión única)
         const token = getTokenFromRequest(req);
         if (token) {
-          const payload = await verifyAccessToken(token);
-          if (payload) {
-            // Sin refresh: no borramos todas las sesiones de todos los dispositivos
-            // Solo limpiamos cookies del request actual
-          }
+          await verifyAccessToken(token);
         }
       }
       const res = ok({ message: 'Sesión cerrada' });
