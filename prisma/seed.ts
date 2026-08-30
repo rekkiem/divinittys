@@ -86,7 +86,7 @@ async function main() {
     { key: 'store_phone',              value: '+56 9 xxxx xxxx',     type: 'string' },
     { key: 'store_address',            value: 'Santiago, Chile',      type: 'string' },
     { key: 'currency',                 value: 'CLP',                  type: 'string' },
-    { key: 'free_shipping_threshold',  value: '50000',                type: 'number' },
+    { key: 'free_shipping_threshold',  value: '29990',                type: 'number' },
     { key: 'tax_rate',                 value: '0.19',                 type: 'number' },
     { key: 'maintenance_mode',         value: 'false',                type: 'boolean' },
   ];

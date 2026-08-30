@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { formatCLP } from '@/lib/utils/api';
+import { formatShippingAddress } from '@/lib/chile/geo';
 import { ArrowLeft } from 'lucide-react';
 import OrderStatusClient from './OrderStatusClient';
 
@@ -9,7 +10,8 @@ async function getOrder(id: string) {
   return prisma.order.findUnique({
     where: { id },
     include: {
-      user: { select: { id: true, name: true, email: true } },
+      user: { select: { id: true, name: true, email: true, phone: true } },
+      address: true,
       items: {
         include: {
           product: {
@@ -27,7 +29,23 @@ export default async function PedidoDetailPage({ params }: { params: { id: strin
   const order = await getOrder(params.id);
   if (!order) notFound();
 
-  const shipping = order.shippingData as any;
+  // Preferir la relación formal Address; fallback al snapshot JSON (pedidos legacy)
+  const shippingRaw = order.address
+    ? {
+        firstName: order.address.firstName,
+        lastName: order.address.lastName,
+        street: order.address.street,
+        number: order.address.number,
+        apartment: order.address.apartment,
+        commune: order.address.commune,
+        city: order.address.city,
+        region: order.address.region,
+        phone: order.address.phone,
+        email: order.user?.email || order.guestEmail,
+      }
+    : (order.shippingData as any);
+
+  const addr = formatShippingAddress(shippingRaw);
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -82,17 +100,28 @@ export default async function PedidoDetailPage({ params }: { params: { id: strin
           </div>
 
           {/* Shipping address */}
-          {shipping && (
-            <div className="bg-white rounded-2xl border border-champagne-100 p-6">
-              <h2 className="font-sans font-semibold text-charcoal-700 mb-3">Dirección de envío</h2>
+          <div className="bg-white rounded-2xl border border-champagne-100 p-6">
+            <h2 className="font-sans font-semibold text-charcoal-700 mb-3">Dirección de envío</h2>
+            {addr.fullName || addr.line1 ? (
               <div className="font-sans text-sm text-charcoal-600 space-y-1">
-                <p className="font-medium">{shipping.name} {shipping.lastName}</p>
-                <p>{shipping.address}, {shipping.commune}</p>
-                <p>{shipping.city}, {shipping.region}</p>
-                <p>{shipping.email} · {shipping.phone}</p>
+                {addr.fullName && <p className="font-medium">{addr.fullName}</p>}
+                {addr.line1 && <p>{addr.line1}</p>}
+                {addr.line2 && <p>{addr.line2}</p>}
+                {addr.contact && <p>{addr.contact}</p>}
+                {order.address && (
+                  <p className="text-xs text-charcoal-400 mt-2">
+                    Dirección registrada · {order.address.label}
+                    {order.address.isDefault ? ' (default)' : ''}
+                  </p>
+                )}
+                {!addr.isComplete && (
+                  <p className="text-amber-600 text-xs mt-2">Dirección incompleta — pide al cliente calle y número.</p>
+                )}
               </div>
-            </div>
-          )}
+            ) : (
+              <p className="font-sans text-sm text-charcoal-400">Sin dirección de envío registrada.</p>
+            )}
+          </div>
         </div>
 
         {/* Sidebar */}
@@ -128,8 +157,24 @@ export default async function PedidoDetailPage({ params }: { params: { id: strin
           <div className="bg-white rounded-2xl border border-champagne-100 p-6">
             <h2 className="font-sans font-semibold text-charcoal-700 mb-3">Cliente</h2>
             <div className="font-sans text-sm text-charcoal-600 space-y-1">
-              <p className="font-medium">{order.user?.name || 'Invitado'}</p>
-              <p className="text-charcoal-400">{order.user?.email || order.guestEmail}</p>
+              <p className="font-medium">
+                {order.user?.name
+                  || [shippingRaw?.firstName, shippingRaw?.lastName].filter(Boolean).join(' ')
+                  || order.guestName
+                  || 'Invitado'}
+              </p>
+              <p className="text-charcoal-400">{order.user?.email || order.guestEmail || shippingRaw?.email}</p>
+              {(order.user?.phone || order.guestPhone || shippingRaw?.phone) && (
+                <p className="text-charcoal-400">{order.user?.phone || order.guestPhone || shippingRaw?.phone}</p>
+              )}
+              {order.user?.id && (
+                <Link
+                  href={`/admin/clientes/${order.user.id}`}
+                  className="inline-block mt-2 text-xs text-primary-600 hover:underline"
+                >
+                  Ver ficha del cliente →
+                </Link>
+              )}
             </div>
           </div>
         </div>

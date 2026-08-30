@@ -60,7 +60,6 @@ export default function LoginForm() {
     }
   };
 
-  // Tras Google, Auth.js redirige a /cuenta (o redirect). El bridge emite JWT.
   const googleCallback =
     redirectTo && redirectTo.startsWith('/')
       ? redirectTo

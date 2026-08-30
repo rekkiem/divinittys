@@ -59,7 +59,7 @@ export default function RegisterPage() {
         <div className="mb-6">
           <GoogleSignInButton
             label="Registrarse con Google"
-            callbackUrl="/api/oauth/google-callback"
+            callbackUrl="/cuenta"
           />
         </div>
 
