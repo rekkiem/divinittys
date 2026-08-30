@@ -40,8 +40,9 @@ export default function Footer() {
               </span>
             </Link>
             <p className="font-sans text-sm text-charcoal-300 leading-relaxed max-w-xs">
-              Portal de belleza profesional con productos capilares y cosméticos, y tecnología IA
-              para recomendaciones personalizadas.
+              DIVINITTYS es tu tienda de belleza profesional. Regístrate o inicia sesión con Google
+              para gestionar tu perfil, revisar el estado de tus compras, historial de pedidos y
+              guardar productos favoritos.
             </p>
 
             <div className="space-y-2">

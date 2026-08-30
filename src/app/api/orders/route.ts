@@ -4,10 +4,11 @@ import { prisma } from '@/lib/prisma';
 import { getAuthUser } from '@/lib/auth';
 import { ok, created, badRequest, unauthorized, serverError, generateOrderNumber } from '@/lib/utils/api';
 import { quoteBluexpress, calculatePackageFromOrder } from '@/lib/shipping/bluexpress';
+import { getFreeShippingThreshold } from '@/lib/shipping/free-shipping';
+import { isValidChileCommune } from '@/lib/chile/geo';
 
 const MAX_SHIPPING_CLP = 15000;
 const SHIPPING_TOLERANCE = 0.15;
-const FREE_SHIPPING_THRESHOLD = 50000;
 
 const createOrderSchema = z.object({
   items: z.array(z.object({ productId: z.string(), variantId: z.string().optional(), quantity: z.number().int().min(1) })).min(1),
@@ -15,6 +16,8 @@ const createOrderSchema = z.object({
     firstName: z.string(), lastName: z.string(), street: z.string(), number: z.string(), apartment: z.string().optional(),
     commune: z.string(), city: z.string(), region: z.string(), phone: z.string(), email: z.string().email(),
   }),
+  /** Opcional: usar una dirección ya guardada del usuario en lugar de crear una nueva */
+  addressId: z.string().optional(),
   couponCode: z.string().optional(), shippingService: z.string().optional(), shippingAmount: z.number().min(0).max(MAX_SHIPPING_CLP).optional(), notes: z.string().optional(),
 });
 
@@ -33,7 +36,9 @@ async function resolveShippingAmount(params: {
   if (typeof params.clientAmount !== 'number') return { amount: serverQuotes[0]?.price ?? fallback, source: serverQuotes.length ? 'server-quote' : 'fallback' };
   let matched = serverQuotes[0];
   if (params.shippingService && serverQuotes.length) matched = serverQuotes.find((q) => q.serviceName === params.shippingService || q.serviceCode === params.shippingService || params.shippingService!.toLowerCase().includes(q.serviceCode.toLowerCase())) || matched;
-  if (matched && Math.abs(matched.price - params.clientAmount) / Math.max(matched.price, 1) <= SHIPPING_TOLERANCE) {
+  if (matched) {
+    const min = matched.price * (1 - SHIPPING_TOLERANCE), max = matched.price * (1 + SHIPPING_TOLERANCE);
+    if (params.clientAmount < min || params.clientAmount > max) return { amount: matched.price, source: 'server-override' };
     return { amount: params.clientAmount, source: 'client-validated' };
   }
   if (params.clientAmount > MAX_SHIPPING_CLP) return { amount: fallback, source: 'capped' };
@@ -45,7 +50,6 @@ export async function GET(req: NextRequest) {
   try {
     const user = await getAuthUser(req);
     if (!user) return unauthorized();
-    // Ocultar checkouts abandonados (PENDING + pago PENDING): solo viven en el carrito
     const orders = await prisma.order.findMany({
       where: {
         userId: user.id,
@@ -54,15 +58,10 @@ export async function GET(req: NextRequest) {
         },
       },
       include: {
-        items: {
-          include: {
-            product: {
-              include: { images: { where: { isMain: true }, take: 1 } },
-            },
-          },
-        },
+        items: { include: { product: { include: { images: { where: { isMain: true }, take: 1 } } } } },
         payment: { select: { status: true, provider: true, paidAt: true, paymentMethod: true } },
         shipment: { select: { trackingNumber: true, status: true } },
+        address: true,
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -76,6 +75,9 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getAuthUser(req);
     const data = createOrderSchema.parse(await req.json());
+    if (!isValidChileCommune(data.shippingData.region, data.shippingData.commune)) {
+      return badRequest('La comuna no corresponde a la región. Revisa la dirección de envío.');
+    }
     const productIds = data.items.map((i) => i.productId);
     const products = await prisma.product.findMany({ where: { id: { in: productIds }, isActive: true }, include: { inventory: true, variants: true, images: { where: { isMain: true }, take: 1 } } });
     if (products.length !== new Set(productIds).size) return badRequest('Algunos productos no están disponibles');
@@ -105,35 +107,104 @@ export async function POST(req: NextRequest) {
         if (coupon.minOrderAmount && subtotal < Number(coupon.minOrderAmount)) return badRequest(`El cupón requiere un mínimo de $${coupon.minOrderAmount}`);
         if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) return badRequest('Cupón agotado');
         if (coupon.type === 'PERCENTAGE') discountAmount = subtotal * (Number(coupon.value) / 100);
-        else if (coupon.type === 'FIXED_AMOUNT') discountAmount = Number(coupon.value);
+        else if (coupon.type === 'FIXED_AMOUNT') discountAmount = Math.min(Number(coupon.value), subtotal);
         else if (coupon.type === 'FREE_SHIPPING') freeShippingCoupon = true;
       }
     }
 
-    const freeShipping = freeShippingCoupon || subtotal - discountAmount >= FREE_SHIPPING_THRESHOLD;
+    const freeShippingThreshold = await getFreeShippingThreshold();
+    const freeShipping = freeShippingCoupon || subtotal >= freeShippingThreshold;
     const shipping = await resolveShippingAmount({ clientAmount: data.shippingAmount, shippingService: data.shippingService, shippingData: data.shippingData, items: data.items, freeShipping });
     const shippingAmount = shipping.amount;
     const total = subtotal - discountAmount + shippingAmount;
 
     const order = await prisma.$transaction(async (tx: any) => {
+      // ─── Dirección formal (User 1→N Address, Order N→1 Address) ───
+      let resolvedAddressId: string | null = null;
+
+      if (user?.id) {
+        const addrPayload = {
+          firstName: data.shippingData.firstName,
+          lastName: data.shippingData.lastName,
+          street: data.shippingData.street,
+          number: data.shippingData.number,
+          apartment: data.shippingData.apartment || null,
+          commune: data.shippingData.commune,
+          city: data.shippingData.city,
+          region: data.shippingData.region,
+          phone: data.shippingData.phone,
+        };
+
+        // Si el cliente envió addressId de una dirección existente, validar ownership
+        if (data.addressId) {
+          const owned = await tx.address.findFirst({
+            where: { id: data.addressId, userId: user.id },
+          });
+          if (owned) {
+            // Actualizar datos por si cambió algo en el form
+            await tx.address.update({ where: { id: owned.id }, data: addrPayload });
+            resolvedAddressId = owned.id;
+          }
+        }
+
+        if (!resolvedAddressId) {
+          // Upsert de la dirección default del usuario
+          const existing = await tx.address.findFirst({
+            where: { userId: user.id, isDefault: true },
+          });
+          if (existing) {
+            await tx.address.update({ where: { id: existing.id }, data: addrPayload });
+            resolvedAddressId = existing.id;
+          } else {
+            const created = await tx.address.create({
+              data: {
+                userId: user.id,
+                label: 'Casa',
+                isDefault: true,
+                ...addrPayload,
+              },
+            });
+            resolvedAddressId = created.id;
+          }
+        }
+      }
+
       const newOrder = await tx.order.create({
         data: {
-          orderNumber: generateOrderNumber(), userId: user?.id, status: 'PENDING', subtotal, discountAmount, shippingAmount, total,
-          guestEmail: !user ? data.shippingData.email : undefined, shippingData: data.shippingData, couponCode: data.couponCode,
+          orderNumber: generateOrderNumber(),
+          userId: user?.id,
+          addressId: resolvedAddressId, // ← relación formal
+          status: 'PENDING',
+          subtotal,
+          discountAmount,
+          shippingAmount,
+          total,
+          guestEmail: !user ? data.shippingData.email : undefined,
+          guestName: !user ? `${data.shippingData.firstName} ${data.shippingData.lastName}`.trim() : undefined,
+          guestPhone: !user ? data.shippingData.phone : undefined,
+          shippingData: data.shippingData, // snapshot inmutable
+          couponCode: data.couponCode,
           notes: [data.notes, data.shippingService ? `Envío: ${data.shippingService}` : null, `shipping_source=${shipping.source}`].filter(Boolean).join(' | '),
           items: { create: orderItems },
           payment: { create: { provider: 'WEBPAY', status: 'PENDING', amount: total, currency: 'CLP' } },
-        }, include: { items: true, payment: true },
+        },
+        include: { items: true, payment: true, address: true },
       });
 
       const variantProductIds = new Set<string>();
       for (const item of data.items) {
         if (item.variantId) {
-          const updated = await tx.productVariant.updateMany({ where: { id: item.variantId, productId: item.productId, isActive: true, stock: { gte: item.quantity } }, data: { stock: { decrement: item.quantity } } });
+          const updated = await tx.productVariant.updateMany({
+            where: { id: item.variantId, productId: item.productId, isActive: true, stock: { gte: item.quantity } },
+            data: { stock: { decrement: item.quantity } },
+          });
           if (updated.count !== 1) throw new Error(`Stock insuficiente para la variante ${item.variantId}`);
           variantProductIds.add(item.productId);
         } else {
-          const updated = await tx.inventory.updateMany({ where: { productId: item.productId, stock: { gte: item.quantity } }, data: { reservedStock: { increment: item.quantity } } });
+          const updated = await tx.inventory.updateMany({
+            where: { productId: item.productId, stock: { gte: item.quantity } },
+            data: { reservedStock: { increment: item.quantity } },
+          });
           if (updated.count !== 1) throw new Error(`Stock insuficiente para ${item.productId}`);
         }
       }
@@ -141,10 +212,20 @@ export async function POST(req: NextRequest) {
       for (const productId of Array.from(variantProductIds)) {
         const activeVariants = await tx.productVariant.findMany({ where: { productId, isActive: true }, select: { stock: true } });
         const aggregateStock = activeVariants.reduce((sum: number, v: { stock: number }) => sum + v.stock, 0);
-        await tx.inventory.upsert({ where: { productId }, update: { stock: aggregateStock }, create: { productId, stock: aggregateStock, lowStockThreshold: 5, trackStock: true } });
+        await tx.inventory.upsert({
+          where: { productId },
+          update: { stock: aggregateStock },
+          create: { productId, stock: aggregateStock, lowStockThreshold: 5, trackStock: true },
+        });
       }
 
-      if (data.couponCode) await tx.coupon.update({ where: { code: data.couponCode.toUpperCase() }, data: { usedCount: { increment: 1 } } });
+      if (data.couponCode) {
+        await tx.coupon.update({
+          where: { code: data.couponCode.toUpperCase() },
+          data: { usedCount: { increment: 1 } },
+        });
+      }
+
       return newOrder;
     });
 

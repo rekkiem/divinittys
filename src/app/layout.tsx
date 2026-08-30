@@ -5,19 +5,22 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: {
-    default: 'DIVINITTYS | Belleza Profesional',
+    // Nombre de marca alineado con Google OAuth Brand (DIVINITTYS)
+    default: 'DIVINITTYS',
     template: '%s | DIVINITTYS',
   },
-  description: 'Tu tienda de belleza profesional. Los mejores productos capilares, coloración, tratamientos y más.',
-  keywords: ['belleza', 'productos capilares', 'coloración', 'keratina', 'tratamientos', 'Chile'],
+  description:
+    'DIVINITTYS — Tienda de belleza profesional en Chile. Inicia sesión para gestionar pedidos, historial de compras, lista de deseos y tu perfil.',
+  keywords: ['DIVINITTYS', 'belleza', 'productos capilares', 'coloración', 'keratina', 'tratamientos', 'Chile'],
   authors: [{ name: 'DIVINITTYS' }],
   creator: 'DIVINITTYS',
   openGraph: {
     type: 'website',
     locale: 'es_CL',
     url: process.env.NEXT_PUBLIC_APP_URL,
-    title: 'DIVINITTYS | Belleza Profesional',
-    description: 'Tu tienda de belleza profesional en Chile',
+    title: 'DIVINITTYS',
+    description:
+      'Inicia sesión en DIVINITTYS para gestionar tus pedidos, historial de compras y productos favoritos.',
     siteName: 'DIVINITTYS',
   },
   robots: {
