@@ -16,6 +16,7 @@ export default function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState({ email: '', password: '' });
+  const [mode, setMode] = useState<'login' | 'reactivate'>('login');
 
   const redirectTo = searchParams?.get('redirect') ?? null;
   const errorParam = searchParams?.get('error');
@@ -32,18 +33,22 @@ export default function LoginForm() {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch('/api/auth?action=login', {
+      const endpoint =
+        mode === 'reactivate' ? '/api/account/reactivate' : '/api/auth?action=login';
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
         credentials: 'include',
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Error al iniciar sesión');
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || (mode === 'reactivate' ? 'No se pudo reactivar' : 'Error al iniciar sesión'));
+      }
 
       setUser(data.data.user);
       setToken(data.data.accessToken);
-      toast.success('¡Bienvenida de vuelta!');
+      toast.success(mode === 'reactivate' ? 'Cuenta reactivada' : '¡Bienvenida de vuelta!');
 
       const role = data.data.user?.role;
       if (redirectTo && redirectTo.startsWith('/')) {
@@ -80,10 +85,13 @@ export default function LoginForm() {
             <span className="font-display text-2xl font-light tracking-widest text-charcoal-600">DIVINITTYS</span>
           </Link>
 
-          <h1 className="font-display text-4xl font-light text-charcoal-700 mb-2">Bienvenida a DIVINITTYS</h1>
+          <h1 className="font-display text-4xl font-light text-charcoal-700 mb-2">
+            {mode === 'reactivate' ? 'Reactivar cuenta' : 'Bienvenida a DIVINITTYS'}
+          </h1>
           <p className="font-sans text-charcoal-400 mb-6">
-            Inicia sesión en DIVINITTYS para gestionar tu perfil, revisar el estado de tus compras,
-            historial de pedidos y guardar productos favoritos.
+            {mode === 'reactivate'
+              ? 'Ingresa el email y contraseña de tu cuenta desactivada para volver a usarla.'
+              : 'Inicia sesión en DIVINITTYS para gestionar tu perfil, revisar el estado de tus compras, historial de pedidos y guardar productos favoritos.'}
           </p>
 
           <div className="mb-6">
@@ -142,16 +150,38 @@ export default function LoginForm() {
               className="w-full btn-primary flex items-center justify-center gap-2 disabled:opacity-50"
             >
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              {loading ? 'Ingresando...' : 'Ingresar'}
+              {loading ? (mode === 'reactivate' ? 'Reactivando...' : 'Ingresando...') : mode === 'reactivate' ? 'Reactivar cuenta' : 'Ingresar'}
             </button>
           </form>
 
-          <div className="mt-8 text-center">
+          <div className="mt-8 text-center space-y-2">
             <p className="font-sans text-sm text-charcoal-400">
               ¿No tienes cuenta?{' '}
               <Link href="/cuenta/registro" className="text-primary-500 hover:text-primary-600 font-semibold">
                 Crear una cuenta gratis
               </Link>
+            </p>
+            <p className="font-sans text-sm text-charcoal-400">
+              {mode === 'login' ? (
+                <>
+                  ¿Cuenta desactivada?{' '}
+                  <button
+                    type="button"
+                    onClick={() => setMode('reactivate')}
+                    className="text-primary-500 hover:text-primary-600 font-semibold"
+                  >
+                    Reactivar cuenta
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setMode('login')}
+                  className="text-primary-500 hover:text-primary-600 font-semibold"
+                >
+                  Volver al inicio de sesión
+                </button>
+              )}
             </p>
           </div>
         </motion.div>

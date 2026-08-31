@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
       const email = sanitizeEmail(parsed.email);
       const password = parsed.password;
 
-      const user = await prisma.user.findFirst({ where: { email, isActive: true } });
+      const user = await prisma.user.findFirst({ where: { email } });
       if (!user) return unauthorized('Credenciales inválidas');
 
       // Usuarios creados solo con Google no tienen passwordHash
@@ -111,6 +111,12 @@ export async function POST(req: NextRequest) {
 
       const valid = await bcrypt.compare(password, user.passwordHash);
       if (!valid) return unauthorized('Credenciales inválidas');
+
+      if (!user.isActive) {
+        return unauthorized(
+          'Tu cuenta está desactivada. Usa "Reactivar cuenta" o contacta a contacto@divinittys.cl.'
+        );
+      }
 
       const accessToken = await signAccessToken({
         userId: user.id,
