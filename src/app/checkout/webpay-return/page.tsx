@@ -6,49 +6,71 @@ import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import Navbar from '@/components/layout/Navbar';
 import { useCartStore } from '@/hooks/useCart';
 
+type ReturnStatus = 'loading' | 'success' | 'error';
+
 export default function WebpayReturnPage() {
-  const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
+  const [status, setStatus] = useState<ReturnStatus>('loading');
   const [orderNumber, setOrderNumber] = useState('');
   const [message, setMessage] = useState('');
   const params = useSearchParams();
   const router = useRouter();
   const clearCart = useCartStore((s) => s.clearCart);
+
   const tokenWs = params?.get('token_ws');
   const tbkToken = params?.get('TBK_TOKEN');
   const tbkOrdenCompra = params?.get('TBK_ORDEN_COMPRA');
+  const tbkIdSesion = params?.get('TBK_ID_SESION');
 
   useEffect(() => {
-    const commit = async () => {
-      // Cancelled or timeout
-      if (!tokenWs || tbkToken || tbkOrdenCompra) {
+    const handleReturn = async () => {
+      // 1. User cancelled on Webpay form ("Anular compra y volver al comercio")
+      if (tbkToken) {
         setStatus('error');
-        setMessage('El pago fue cancelado o no se completó.');
+        setMessage('Cancelaste el pago. Puedes intentar de nuevo cuando quieras.');
         return;
       }
 
-      const res = await fetch('/api/payments?action=webpay-commit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token_ws: tokenWs }),
-      });
-      const data = await res.json();
-
-      if (data.data?.success) {
-        setStatus('success');
-        setOrderNumber(data.data.orderNumber);
-        // Solo vaciar carrito cuando el pago está confirmado
-        clearCart();
-      } else {
+      // 2. Timeout (~5 min idle on Webpay form): only session/order, no token
+      if (!tokenWs && (tbkOrdenCompra || tbkIdSesion)) {
         setStatus('error');
-        setMessage(data.data?.message || data.error || 'El pago no pudo procesarse.');
+        setMessage('La sesión de pago expiró. Puedes intentar de nuevo.');
+        return;
+      }
+
+      // 3. No valid token → generic error (never call commit)
+      if (!tokenWs) {
+        setStatus('error');
+        setMessage('El pago no se completó. Puedes intentar de nuevo.');
+        return;
+      }
+
+      // 4. Normal flow: commit with Transbank
+      try {
+        const res = await fetch('/api/payments?action=webpay-commit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token_ws: tokenWs }),
+        });
+        const data = await res.json();
+
+        if (data.data?.success) {
+          setStatus('success');
+          setOrderNumber(data.data.orderNumber ?? '');
+          clearCart();
+        } else {
+          setStatus('error');
+          setMessage(
+            data.data?.message || data.error || 'El pago no pudo procesarse.'
+          );
+        }
+      } catch {
+        setStatus('error');
+        setMessage('Error de conexión al confirmar el pago.');
       }
     };
 
-    commit().catch(() => {
-      setStatus('error');
-      setMessage('Error de conexión al confirmar el pago.');
-    });
-  }, [tokenWs, tbkToken, tbkOrdenCompra, clearCart]);
+    handleReturn();
+  }, [tokenWs, tbkToken, tbkOrdenCompra, tbkIdSesion, clearCart]);
 
   return (
     <div className="min-h-screen bg-champagne-50/30">
@@ -82,7 +104,10 @@ export default function WebpayReturnPage() {
             <h1 className="font-display text-3xl text-charcoal-700 mb-2">Pago no completado</h1>
             <p className="font-sans text-charcoal-400 mb-8">{message}</p>
             <div className="flex gap-3 justify-center">
-              <button onClick={() => router.push('/checkout')} className="btn-primary">
+              <button
+                onClick={() => router.push('/checkout')}
+                className="btn-primary"
+              >
                 Intentarlo de nuevo
               </button>
               <button onClick={() => router.push('/')} className="btn-secondary">

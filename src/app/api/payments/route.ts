@@ -76,7 +76,11 @@ export async function POST(req: NextRequest) {
       await ensurePaymentRecord(orderId, 'WEBPAY', total);
       await prisma.payment.update({
         where: { orderId },
-        data: { externalId: result.token, status: 'PROCESSING' },
+        data: {
+          externalId: result.token,
+          token: result.token,
+          status: 'PROCESSING',
+        },
       });
 
       return ok({ url: result.url, token: result.token });
@@ -98,7 +102,7 @@ export async function POST(req: NextRequest) {
           paymentId: payment.id,
           orderId: payment.orderId,
           responseData: result as any,
-          externalId: (result as any).authorization_code,
+          // Keep original Transbank token in externalId (do not overwrite with auth code)
           authCode: (result as any).authorization_code,
           installments: (result as any).installments_number || 1,
           paymentMethod: (result as any).payment_type_code,
