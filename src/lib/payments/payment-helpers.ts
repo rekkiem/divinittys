@@ -64,7 +64,20 @@ export async function markPaymentPaid(params: {
       if (updated.count !== 1) throw new Error(`Insufficient inventory stock for ${item.productId}`);
     }
 
-    await tx.payment.update({ where: { id: params.paymentId }, data: { status: 'PAID', paidAt: new Date(), externalId: params.externalId ?? undefined, authCode: params.authCode ?? undefined, installments: params.installments ?? 1, paymentMethod: params.paymentMethod ?? undefined, responseData: params.responseData as any, errorMessage: null } });
+    await tx.payment.update({
+      where: { id: params.paymentId },
+      data: {
+        status: 'PAID',
+        paidAt: new Date(),
+        // Only set externalId when explicitly provided (Webpay keeps original token)
+        ...(params.externalId != null ? { externalId: params.externalId } : {}),
+        authCode: params.authCode ?? undefined,
+        installments: params.installments ?? 1,
+        paymentMethod: params.paymentMethod ?? undefined,
+        responseData: params.responseData as any,
+        errorMessage: null,
+      },
+    });
     await tx.order.update({ where: { id: params.orderId }, data: { status: 'CONFIRMED', paymentStatus: 'PAID' } });
     return { alreadyPaid: false };
   });
