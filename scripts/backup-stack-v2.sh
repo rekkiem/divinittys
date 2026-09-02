@@ -1,20 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
-# DIVINITTYS + OpenClaw — Backup completo para migración VPS
-# Basado en main (scripts/backup-stack.sh v1) + cobertura total.
-#
-# Uso:
-#   bash scripts/backup-stack-v2.sh
-#   BACKUP_DIR=/var/backups/divinittys bash scripts/backup-stack-v2.sh
-#
-# Incluye:
-#   - Postgres dump
-#   - .env.production
-#   - Volúmenes: postgres, redis, meili, minio, certbot_*
-#   - Código app (sin node_modules / .next / backups)
-#   - OpenClaw completo (/home/openclaw/.openclaw)
-#   - unit openclaw.service si existe
-#   - system-state (cron, enabled units)
+# DIVINITTYS + OpenClaw — Backup completo para migracion VPS
+# Uso: bash scripts/backup-stack-v2.sh
 # ============================================================
 set -euo pipefail
 
@@ -29,71 +16,60 @@ OPENCLAW_HOME="${OPENCLAW_HOME:-/home/openclaw/.openclaw}"
 cd "$APP_DIR"
 mkdir -p "$OUT"
 
-# shellcheck disable=SC1090
 set -a
+# shellcheck disable=SC1090
 source <(grep -E '^(POSTGRES_USER|POSTGRES_DB)=' "$ENV_FILE" 2>/dev/null | sed 's/\r$//') || true
 set +a
 POSTGRES_USER="${POSTGRES_USER:-divinittys}"
 POSTGRES_DB="${POSTGRES_DB:-divinittys}"
 
-echo "📦 Backup completo → $OUT"
-echo "   stamp=$STAMP  host=$(hostname)"
+echo "Backup completo -> $OUT"
+echo "  stamp=$STAMP  host=$(hostname)"
 
-# ── 1. Postgres dump ─────────────────────────────────────────
+# 1. Postgres dump
 if docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps postgres 2>/dev/null | grep -qE 'Up|running|healthy'; then
   docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T postgres \
     pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" | gzip > "$OUT/postgres.sql.gz"
-  echo "  ✓ postgres.sql.gz ($(du -h "$OUT/postgres.sql.gz" | cut -f1))"
+  echo "  OK postgres.sql.gz ($(du -h "$OUT/postgres.sql.gz" | cut -f1))"
 else
-  # fallback: contenedor por nombre
-  if docker ps --format '{{.Names}}' | grep -q 'divinittys_db\|divinittys_postgres'; then
-    CN=$(docker ps --format '{{.Names}}' | grep -E 'divinittys_db|divinittys_postgres' | head -1)
+  CN=$(docker ps --format '{{.Names}}' | grep -E 'divinittys_db|divinittys_postgres' | head -1 || true)
+  if [[ -n "$CN" ]]; then
     docker exec -i "$CN" pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" | gzip > "$OUT/postgres.sql.gz"
-    echo "  ✓ postgres.sql.gz via $CN ($(du -h "$OUT/postgres.sql.gz" | cut -f1))"
+    echo "  OK postgres.sql.gz via $CN ($(du -h "$OUT/postgres.sql.gz" | cut -f1))"
   else
-    echo "  ⚠ postgres no está up — omitiendo dump"
+    echo "  WARN postgres no esta up"
   fi
 fi
 
-# ── 2. .env.production (secretos) ────────────────────────────
+# 2. .env.production
 if [[ -f "$ENV_FILE" ]]; then
   cp "$ENV_FILE" "$OUT/env.production.backup"
   chmod 600 "$OUT/env.production.backup"
-  echo "  ✓ env.production.backup"
+  echo "  OK env.production.backup"
 else
-  echo "  ⚠ $ENV_FILE no encontrado — ABORTAR si es migración real"
+  echo "  WARN $ENV_FILE no encontrado"
 fi
 
-# ── 3. Volúmenes Docker explícitos ───────────────────────────
-# Nombres reales medidos en VPS: divinittys_postgres_data, etc.
-declare -a VOL_PATTERNS=(
-  "postgres_data"
-  "redis_data"
-  "meili_data"
-  "minio_data"
-  "certbot_conf"
-  "certbot_www"
-)
-
+# 3. Volumenes Docker
+VOL_PATTERNS="postgres_data redis_data meili_data minio_data certbot_conf certbot_www"
 docker volume ls --format '{{.Name}}' > "$OUT/volumes-all.txt" || true
 docker volume ls --format '{{.Name}}' | grep -iE 'divinittys|postgres|redis|meili|minio|certbot' > "$OUT/volumes-project.txt" || true
-echo "  ✓ volumes-*.txt"
+echo "  OK volumes-*.txt"
 
-for pattern in "${VOL_PATTERNS[@]}"; do
+for pattern in $VOL_PATTERNS; do
   VOL=$(docker volume ls -q | grep -E "${pattern}$" | head -1 || true)
   if [[ -n "$VOL" ]]; then
     docker run --rm -v "${VOL}":/data -v "$OUT":/backup alpine \
       tar czf "/backup/${pattern}.tar.gz" -C /data . 2>/dev/null \
-      && echo "  ✓ ${pattern}.tar.gz ($(du -h "$OUT/${pattern}.tar.gz" | cut -f1))" \
-      || echo "  ⚠ fallo al tar ${VOL}"
+      && echo "  OK ${pattern}.tar.gz ($(du -h "$OUT/${pattern}.tar.gz" | cut -f1))" \
+      || echo "  WARN fallo tar ${VOL}"
   else
-    echo "  · volumen ${pattern} no existe (ok)"
+    echo "  skip ${pattern}"
   fi
 done
 
-# ── 4. Código /opt/divinittys (sin basura pesada) ────────────
-# Excluye ~905 MB de node_modules + .next + backups viejos
-echo "  → empaquetando código de la app (sin node_modules/.next/backups)..."
+# 4. Codigo app (sin node_modules / .next / backups)
+echo "  empaquetando codigo app..."
 tar czf "$OUT/app-code.tar.gz" \
   --exclude='./node_modules' \
   --exclude='./.next' \
@@ -101,63 +77,66 @@ tar czf "$OUT/app-code.tar.gz" \
   --exclude='./tsconfig.tsbuildinfo' \
   --exclude='./.git' \
   -C "$APP_DIR" . 2>/dev/null \
-  && echo "  ✓ app-code.tar.gz ($(du -h "$OUT/app-code.tar.gz" | cut -f1))" \
-  || echo "  ⚠ app-code.tar.gz falló"
+  && echo "  OK app-code.tar.gz ($(du -h "$OUT/app-code.tar.gz" | cut -f1))" \
+  || echo "  WARN app-code.tar.gz fallo"
 
-# .git por separado (historial local)
 if [[ -d "$APP_DIR/.git" ]]; then
   tar czf "$OUT/app-git.tar.gz" -C "$APP_DIR" .git 2>/dev/null \
-    && echo "  ✓ app-git.tar.gz ($(du -h "$OUT/app-git.tar.gz" | cut -f1))" || true
+    && echo "  OK app-git.tar.gz ($(du -h "$OUT/app-git.tar.gz" | cut -f1))" || true
 fi
 
-# ── 5. OpenClaw (identidad + memoria del bot) — CRÍTICO ──────
-if [[ -d "$OPENCLAW_HOME" ]]; then
-  echo "  → empaquetando OpenClaw workspace..."
-  tar czf "$OUT/openclaw.tar.gz" \
-    --exclude='*.log' \
-    --exclude='gateway.log' \
-    --exclude='*.tmp' \
-    --exclude='cache/*' \
-    -C "$(dirname "$OPENCLAW_HOME")" "$(basename "$OPENCLAW_HOME")" 2>/dev/null \
-    && echo "  ✓ openclaw.tar.gz ($(du -h "$OUT/openclaw.tar.gz" | cut -f1))" \
-    || echo "  ⚠ openclaw.tar.gz falló"
-else
-  echo "  ⚠ $OPENCLAW_HOME no existe — bot no se migrará con identidad"
+# 5. OpenClaw — probar varias rutas posibles
+pack_openclaw() {
+  local src="$1"
+  local label="$2"
+  if [[ -d "$src" ]]; then
+    tar czf "$OUT/${label}.tar.gz" \
+      --exclude='*.log' \
+      --exclude='gateway.log' \
+      --exclude='*.tmp' \
+      --exclude='cache/*' \
+      -C "$(dirname "$src")" "$(basename "$src")" 2>/dev/null \
+      && echo "  OK ${label}.tar.gz from $src ($(du -h "$OUT/${label}.tar.gz" | cut -f1))" \
+      || echo "  WARN ${label} fallo"
+  fi
+}
+
+pack_openclaw "$OPENCLAW_HOME" "openclaw"
+if [[ "$OPENCLAW_HOME" != "/root/.openclaw" ]]; then
+  pack_openclaw "/root/.openclaw" "openclaw-root"
 fi
 
-# Unit systemd de OpenClaw
 if [[ -f /etc/systemd/system/openclaw.service ]]; then
   cp /etc/systemd/system/openclaw.service "$OUT/openclaw.service"
-  echo "  ✓ openclaw.service"
+  echo "  OK openclaw.service"
 elif systemctl cat openclaw.service >/dev/null 2>&1; then
-  systemctl cat openclaw.service > "$OUT/openclaw.service" 2>/dev/null && echo "  ✓ openclaw.service"
+  systemctl cat openclaw.service > "$OUT/openclaw.service" 2>/dev/null && echo "  OK openclaw.service"
 fi
 
-# ── 6. Estado del sistema / cron / servicios ─────────────────{
+# 6. system-state (no aborta si openclaw falla)
+{
+  echo "=== hostname ==="
+  hostname
   echo "=== openclaw cron ==="
-  command -v openclaw >/dev/null && openclaw cron list 2>&1 || echo "(openclaw no en PATH o sin jobs)"
-  echo ""
+  (command -v openclaw >/dev/null && openclaw cron list) 2>&1 || echo "(openclaw cron no disponible)"
   echo "=== crontab root ==="
   crontab -l 2>/dev/null || true
-  echo ""
-  echo "=== systemctl enabled (filtrado) ==="
+  echo "=== systemctl enabled ==="
   systemctl list-unit-files --state=enabled 2>/dev/null | grep -E 'docker|nginx|caddy|openclaw|fail2ban|certbot' || true
-  echo ""
   echo "=== docker containers ==="
   docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}' 2>/dev/null || true
-  echo ""
-  echo "=== paquetes relevantes ==="
+  echo "=== packages ==="
   dpkg -l 2>/dev/null | grep -E 'nginx|caddy|postfix|docker|certbot|fail2ban' || true
-} > "$OUT/system-state.txt" 2>&1
-echo "  ✓ system-state.txt"
+} > "$OUT/system-state.txt" 2>&1 || true
+echo "  OK system-state.txt"
 
-# ── 7. Certs host (en este VPS no hay; van en volumen Docker) ─
+# 7. certs host (opcional)
 if [[ -d /etc/letsencrypt/live ]]; then
   tar czf "$OUT/letsencrypt.tar.gz" -C /etc letsencrypt 2>/dev/null \
-    && echo "  ✓ letsencrypt.tar.gz ($(du -h "$OUT/letsencrypt.tar.gz" | cut -f1))" || true
+    && echo "  OK letsencrypt.tar.gz ($(du -h "$OUT/letsencrypt.tar.gz" | cut -f1))" || true
 fi
 
-# ── 8. MANIFEST ──────────────────────────────────────────
+# 8. MANIFEST
 {
   echo "stamp=$STAMP"
   echo "host=$(hostname)"
@@ -166,18 +145,13 @@ fi
   date -u +"utc=%Y-%m-%dT%H:%M:%SZ"
   git -C "$APP_DIR" rev-parse HEAD 2>/dev/null | sed 's/^/git=/' || true
   git -C "$APP_DIR" branch --show-current 2>/dev/null | sed 's/^/branch=/' || true
-  echo "--- archivos generados ---"
+  echo "--- files ---"
   ls -lh "$OUT"
 } > "$OUT/MANIFEST.txt"
 
 echo ""
-echo "✅ Backup completo listo: $OUT"
-echo "   Tamaño total: $(du -sh "$OUT" | cut -f1)"
+echo "Backup listo: $OUT"
+echo "Tamano total: $(du -sh "$OUT" | cut -f1)"
 echo ""
-echo "Siguiente paso recomendado:"
-echo "  # Subir off-site (rclone B2)"
-echo "  rclone copy $OUT b2:tu-bucket/divinittys-migration/$STAMP --progress"
-echo "  # o rsync al VPS nuevo"
-echo "  rsync -ahz --progress $OUT/ root@NUEVA_IP:/root/migration/$STAMP/"
-echo ""
-echo "Luego en el VPS nuevo: bash scripts/restore-stack-v2.sh /ruta/al/backup/$STAMP"
+echo "Siguiente: subir a B2"
+echo "  rclone copy $OUT b2div:divinittys/migration/$STAMP --progress"
