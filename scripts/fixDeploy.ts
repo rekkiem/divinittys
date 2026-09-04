@@ -61,7 +61,6 @@ async function main() {
   console.log('  Fix completado. Próximos pasos:');
   console.log('  1. Cierra sesión en el navegador');
   console.log('  2. Limpia localStorage (F12 → Application → Local Storage → Borrar todo)');
-  console.log('  3. Inicia sesión con admin@divinittys.cl / Admin123!@#');
   console.log('  4. Las imágenes deben subirse desde /admin/productos/{slug}/editar');
   console.log('─────────────────────────────────────────\n');
 }

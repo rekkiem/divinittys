@@ -3,7 +3,7 @@
 # ============================================================
 # App:     http://localhost:${PORT_APP:-3000}
 # Admin:   http://localhost:${PORT_APP:-3000}/admin
-#          admin@divinittys.cl / Admin123!@#
+#          
 # MinIO:   http://localhost:${PORT_MINIO_CONSOLE:-9001}
 # Meili:   http://localhost:${PORT_MEILI:-7700}
 #
