@@ -236,12 +236,6 @@ docker exec divinittys_app npx tsx scripts/health-check.ts  # Desde Docker
 
 ---
 
-## Panel de Administración
-
-### Acceso
-1. Ir a `http://localhost:3000/cuenta/login`
-2. Ingresar: `admin@divinittys.cl` / `Admin123!@#`
-3. Serás redirigido a `/admin` automáticamente
 
 ### Módulos disponibles
 
