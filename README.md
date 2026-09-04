@@ -88,7 +88,7 @@ Primera vez: ~3-5 minutos (descarga imágenes, instala deps, migra BD).
 | Servicio | URL | Credenciales |
 |---|---|---|
 | Tienda | http://localhost:3000 | — |
-| Admin | http://localhost:3000/admin | admin@divinittys.cl / Admin123!@# |
+
 | MinIO UI | http://localhost:9001 | divinittys_admin / divinittys_secret_2024 |
 | Meilisearch | http://localhost:7700 | — |
 
