@@ -11,10 +11,10 @@ const connection = {
 
 // ── Queue names ──────────────────────────────────────────
 export const QUEUE_NAMES = {
-  EMAIL: 'divinittys:email',
-  SEARCH_INDEX: 'divinittys:search',
-  IMPORT: 'divinittys:import',
-  NOTIFICATION: 'divinittys:notification',
+  EMAIL: 'divinittys-email',
+  SEARCH_INDEX: 'divinittys-search',
+  IMPORT: 'divinittys-import',
+  NOTIFICATION: 'divinittys-notification',
 } as const;
 
 // ── Queue instances (lazy-init for edge compatibility) ───

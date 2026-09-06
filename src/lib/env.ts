@@ -62,6 +62,17 @@ export const env = {
   BLUEXPRESS_API_KEY: optionalEnv('BLUEXPRESS_API_KEY'),
   BLUEXPRESS_ACCOUNT: optionalEnv('BLUEXPRESS_ACCOUNT'),
 
+  // Email (SMTP)
+  SMTP_HOST: optionalEnv('SMTP_HOST'),
+  SMTP_PORT: optionalEnv('SMTP_PORT', '587'),
+  SMTP_USER: optionalEnv('SMTP_USER'),
+  SMTP_PASS: optionalEnv('SMTP_PASS'),
+  EMAIL_FROM: optionalEnv('EMAIL_FROM', 'DIVINITTYS <no-reply@divinittys.cl>'),
+
+  // Vendor Telegram alerts (bot dedicado, NO OpenClaw)
+  VENDOR_TELEGRAM_BOT_TOKEN: optionalEnv('VENDOR_TELEGRAM_BOT_TOKEN'),
+  VENDOR_TELEGRAM_CHAT_ID: optionalEnv('VENDOR_TELEGRAM_CHAT_ID'),
+
   // Redis
   REDIS_URL: requireEnv('REDIS_URL', 'redis://localhost:6379'),
   REDIS_HOST: optionalEnv('REDIS_HOST'),
