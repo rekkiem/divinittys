@@ -1,11 +1,8 @@
 /**
  * src/instrumentation.ts
  * Next.js instrumentation hook — runs once at server startup.
- * Used to initialize BullMQ workers and Meilisearch index.
- * Docs: https://nextjs.org/docs/app/building-your-application/optimizing/instrumentation
  */
 export async function register() {
-  // Only run on the server (not Edge runtime)
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
 
   const { installGlobalLogCapture, installProcessErrorLogging, logger } = await import('@/lib/logger');
@@ -18,28 +15,35 @@ export async function register() {
 
   const { env } = await import('@/lib/env');
 
-  // ── Meilisearch index setup (non-blocking) ─────────────────────
   try {
     const { setupMeiliIndex } = await import('@/lib/search/meilisearch');
     await setupMeiliIndex();
   } catch (error) {
-    // Meilisearch not available — search will fall back to SQL
     logger.warn('instrumentation.meilisearch_unavailable', { error });
   }
 
-  // ── BullMQ workers (only when Redis is configured) ─────────────
   if (env.REDIS_URL) {
     try {
       const { startSearchWorker } = await import('@/lib/queue/search.queue');
+      const { startEmailWorker } = await import('@/lib/queue/email.queue');
+      const { startNotificationWorker } = await import('@/lib/queue/notification.queue');
+      const { startShippingWorker } = await import('@/lib/queue/shipping.queue');
+      const { startFulfillmentWorker } = await import('@/lib/queue/fulfillment.queue');
+
       startSearchWorker();
-      logger.info('instrumentation.search_worker_started');
+      startEmailWorker();
+      startNotificationWorker();
+      startShippingWorker();
+      startFulfillmentWorker();
+
+      logger.info('instrumentation.workers_started', {
+        workers: ['search', 'email', 'notification', 'shipping', 'fulfillment'],
+      });
     } catch (error) {
       logger.warn('instrumentation.redis_unavailable', { error });
     }
   }
 
-  // ── Cleanup periódicos de pedidos abandonados ───────────────────
-  // Default: cada 15 min. Desactivar con ORDER_CLEANUP_INTERVAL_MS=0
   const cleanupMs = Number(process.env.ORDER_CLEANUP_INTERVAL_MS ?? 15 * 60 * 1000);
   if (cleanupMs > 0) {
     const runCleanup = async () => {
@@ -54,7 +58,6 @@ export async function register() {
       }
     };
 
-    // Primera pasada a los 2 min de arranque, luego cada cleanupMs
     setTimeout(() => {
       runCleanup();
       setInterval(runCleanup, cleanupMs);

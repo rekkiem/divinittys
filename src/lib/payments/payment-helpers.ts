@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { logger } from '@/lib/logger';
+import { enqueueOrderFulfilled } from '@/lib/queue/fulfillment.queue';
 
 async function recalculateVariantAggregate(tx: Prisma.TransactionClient, productIds: string[]) {
   for (const productId of Array.from(new Set(productIds))) {
@@ -82,5 +83,16 @@ export async function markPaymentPaid(params: {
     return { alreadyPaid: false };
   });
   logger.info('payment.paid', { paymentId: params.paymentId, orderId: params.orderId, alreadyPaid: result.alreadyPaid });
+
+  // Fuera de la transacción: si Redis falla, el pago ya quedó confirmado
+  if (!result.alreadyPaid) {
+    await enqueueOrderFulfilled(params.orderId).catch((e) =>
+      logger.error('fulfillment.enqueue_failed', {
+        orderId: params.orderId,
+        error: e instanceof Error ? e.message : String(e),
+      })
+    );
+  }
+
   return result;
 }
