@@ -1,4 +1,7 @@
 /** @type {import('next').NextConfig} */
+// Paquetes con dependencias nativas de Node (fs, net, crypto, stream...) que
+// jamás deben pasar por el bundler de webpack — solo se resuelven en runtime.
+const NODE_ONLY_PACKAGES = ['bullmq', 'ioredis', 'nodemailer', '@aws-sdk/client-s3'];
 const nextConfig = {
   output: 'standalone',
   poweredByHeader: false,
@@ -56,16 +59,13 @@ const nextConfig = {
 
  webpack: (config, { isServer }) => {
     if (isServer) {
-      // Evita que webpack intente resolver bullmq/ioredis en instrumentation
       const externals = config.externals || [];
       config.externals = [
         ...(Array.isArray(externals) ? externals : [externals]),
         ({ request }, callback) => {
           if (
-            request === 'bullmq' ||
-            request === 'ioredis' ||
-            (typeof request === 'string' &&
-              (request.startsWith('bullmq/') || request.startsWith('ioredis/')))
+            typeof request === 'string' &&
+            NODE_ONLY_PACKAGES.some((pkg) => request === pkg || request.startsWith(`${pkg}/`))
           ) {
             return callback(null, `commonjs ${request}`);
           }
