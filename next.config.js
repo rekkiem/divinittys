@@ -1,7 +1,14 @@
 /** @type {import('next').NextConfig} */
-// Paquetes con dependencias nativas de Node (fs, net, crypto, stream...) que
-// jamás deben pasar por el bundler de webpack — solo se resuelven en runtime.
-const NODE_ONLY_PACKAGES = ['bullmq', 'ioredis', 'nodemailer', '@aws-sdk/client-s3'];
+const webpack = require('webpack');
+
+// Paquetes con APIs de Node: no deben ir al bundle de webpack.
+const NODE_ONLY_PACKAGES = [
+  'bullmq',
+  'ioredis',
+  'nodemailer',
+  '@aws-sdk/client-s3',
+];
+
 const nextConfig = {
   output: 'standalone',
   poweredByHeader: false,
@@ -9,29 +16,19 @@ const nextConfig = {
 
   images: {
     remotePatterns: [
-      // ── MinIO local (development) ────────────────────────────────
       { protocol: 'http', hostname: 'localhost', port: '9000', pathname: '/imagenes/**' },
       { protocol: 'http', hostname: 'localhost', port: '9000', pathname: '/**' },
       { protocol: 'http', hostname: '127.0.0.1', port: '9000', pathname: '/**' },
-      // MinIO inside Docker network
       { protocol: 'http', hostname: 'minio', port: '9000', pathname: '/imagenes/**' },
       { protocol: 'http', hostname: 'minio', port: '9000', pathname: '/**' },
-
-      // ── Producción / prep — proxy de medios (MinIO vía nginx) ─────
       { protocol: 'https', hostname: 'media.divinittys.cl', pathname: '/**' },
       { protocol: 'http', hostname: 'media.divinittys.cl', pathname: '/**' },
-
-      // App origins (si alguna imagen se sirve bajo /media en el mismo host)
       { protocol: 'https', hostname: 'divinittys.cl', pathname: '/media/**' },
       { protocol: 'https', hostname: 'www.divinittys.cl', pathname: '/media/**' },
       { protocol: 'https', hostname: 'prep.divinittys.cl', pathname: '/media/**' },
       { protocol: 'https', hostname: 'prep.divinittys.cl', pathname: '/**' },
-
-      // ── Cloud / CDN ──────────────────────────────────────────────
       { protocol: 'https', hostname: '**.r2.cloudflarestorage.com', pathname: '/**' },
       { protocol: 'https', hostname: 'res.cloudinary.com', pathname: '/**' },
-
-      // ── MercadoLibre CDN (productos importados) ──────────────────
       { protocol: 'https', hostname: 'http2.mlstatic.com', pathname: '/**' },
       { protocol: 'https', hostname: '**.mlstatic.com', pathname: '/**' },
     ],
@@ -42,9 +39,8 @@ const nextConfig = {
   },
 
   experimental: {
-    // Necesario en 14.2 + standalone para que corra src/instrumentation.ts
+    // Activa src/instrumentation.ts en Next 14.2 + standalone
     instrumentationHook: true,
-    // bullmq/ioredis usan APIs de Node; no deben ir al bundle de webpack
     serverComponentsExternalPackages: [
       'bcryptjs',
       '@prisma/client',
@@ -57,7 +53,15 @@ const nextConfig = {
     ],
   },
 
- webpack: (config, { isServer }) => {
+  webpack: (config, { isServer }) => {
+    // Critico: imports "node:fs" / "node:path" (logger, etc.) fallan con
+    // UnhandledSchemeError si no se reescriben a "fs" / "path".
+    config.plugins.push(
+      new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
+        resource.request = resource.request.replace(/^node:/, '');
+      })
+    );
+
     if (isServer) {
       const externals = config.externals || [];
       config.externals = [
@@ -65,7 +69,9 @@ const nextConfig = {
         ({ request }, callback) => {
           if (
             typeof request === 'string' &&
-            NODE_ONLY_PACKAGES.some((pkg) => request === pkg || request.startsWith(`${pkg}/`))
+            NODE_ONLY_PACKAGES.some(
+              (pkg) => request === pkg || request.startsWith(`${pkg}/`)
+            )
           ) {
             return callback(null, `commonjs ${request}`);
           }
