@@ -1,4 +1,8 @@
-import 'server-only';
+/**
+ * Logger compartido (Next app + workers tsx).
+ * Sin import 'server-only': el contenedor workers (tsx) no resuelve ese
+ * paquete y entraba en crash loop MODULE_NOT_FOUND.
+ */
 
 import fs from 'node:fs';
 import path from 'node:path';
