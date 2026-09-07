@@ -38,12 +38,19 @@ const nextConfig = {
     unoptimized: process.env.NODE_ENV === 'development',
   },
 
-  experimental: {
+  /*experimental: {
     serverComponentsExternalPackages: [
       'bcryptjs', '@prisma/client', 'prisma', 'meilisearch',
       '@aws-sdk/client-s3',
     ],
-  },
+  },*/
+  experimental: {
+  instrumentationHook: true,
+  serverComponentsExternalPackages: [
+    'bcryptjs', '@prisma/client', 'prisma', 'meilisearch',
+    '@aws-sdk/client-s3',
+  ],
+},
 
   webpack: (config, { isServer }) => {
     if (!isServer) {
