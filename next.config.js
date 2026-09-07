@@ -1,14 +1,10 @@
 /** @type {import('next').NextConfig} */
-const webpack = require('webpack');
-
-// Paquetes con APIs de Node: no deben ir al bundle de webpack.
-const NODE_ONLY_PACKAGES = [
-  'bullmq',
-  'ioredis',
-  'nodemailer',
-  '@aws-sdk/client-s3',
-];
-
+/**
+ * IMPORTANTE (prod):
+ * - NO usar experimental.instrumentationHook con este proyecto.
+ *   instrumentation → logger (node:fs) / bullmq rompe `next build` en webpack.
+ * - Los workers BullMQ corren en el servicio Docker `workers` (target tools).
+ */
 const nextConfig = {
   output: 'standalone',
   poweredByHeader: false,
@@ -39,8 +35,6 @@ const nextConfig = {
   },
 
   experimental: {
-    // Activa src/instrumentation.ts en Next 14.2 + standalone
-    instrumentationHook: true,
     serverComponentsExternalPackages: [
       'bcryptjs',
       '@prisma/client',
@@ -54,31 +48,7 @@ const nextConfig = {
   },
 
   webpack: (config, { isServer }) => {
-    // Critico: imports "node:fs" / "node:path" (logger, etc.) fallan con
-    // UnhandledSchemeError si no se reescriben a "fs" / "path".
-    config.plugins.push(
-      new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
-        resource.request = resource.request.replace(/^node:/, '');
-      })
-    );
-
-    if (isServer) {
-      const externals = config.externals || [];
-      config.externals = [
-        ...(Array.isArray(externals) ? externals : [externals]),
-        ({ request }, callback) => {
-          if (
-            typeof request === 'string' &&
-            NODE_ONLY_PACKAGES.some(
-              (pkg) => request === pkg || request.startsWith(`${pkg}/`)
-            )
-          ) {
-            return callback(null, `commonjs ${request}`);
-          }
-          callback();
-        },
-      ];
-    } else {
+    if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
         net: false,
