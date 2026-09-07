@@ -38,25 +38,53 @@ const nextConfig = {
     unoptimized: process.env.NODE_ENV === 'development',
   },
 
-  /*experimental: {
-    serverComponentsExternalPackages: [
-      'bcryptjs', '@prisma/client', 'prisma', 'meilisearch',
-      '@aws-sdk/client-s3',
-    ],
-  },*/
   experimental: {
-  instrumentationHook: true,
-  serverComponentsExternalPackages: [
-    'bcryptjs', '@prisma/client', 'prisma', 'meilisearch',
-    '@aws-sdk/client-s3',
-  ],
-},
+    // Necesario en 14.2 + standalone para que corra src/instrumentation.ts
+    instrumentationHook: true,
+    // bullmq/ioredis usan APIs de Node; no deben ir al bundle de webpack
+    serverComponentsExternalPackages: [
+      'bcryptjs',
+      '@prisma/client',
+      'prisma',
+      'meilisearch',
+      '@aws-sdk/client-s3',
+      'bullmq',
+      'ioredis',
+      'nodemailer',
+    ],
+  },
 
-  webpack: (config, { isServer }) => {
-    if (!isServer) {
+ webpack: (config, { isServer }) => {
+    if (isServer) {
+      // Evita que webpack intente resolver bullmq/ioredis en instrumentation
+      const externals = config.externals || [];
+      config.externals = [
+        ...(Array.isArray(externals) ? externals : [externals]),
+        ({ request }, callback) => {
+          if (
+            request === 'bullmq' ||
+            request === 'ioredis' ||
+            (typeof request === 'string' &&
+              (request.startsWith('bullmq/') || request.startsWith('ioredis/')))
+          ) {
+            return callback(null, `commonjs ${request}`);
+          }
+          callback();
+        },
+      ];
+    } else {
       config.resolve.fallback = {
         ...config.resolve.fallback,
-        net: false, tls: false, fs: false,
+        net: false,
+        tls: false,
+        fs: false,
+        path: false,
+        crypto: false,
+        child_process: false,
+        worker_threads: false,
+        dns: false,
+        os: false,
+        stream: false,
       };
     }
     return config;
