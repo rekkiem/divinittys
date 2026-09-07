@@ -1,8 +1,7 @@
 /**
  * Logger compartido (Next app + workers tsx).
- * No importar 'server-only': fuera de Next (contenedor workers) no existe
- * el paquete en el grafo de resolución y tira MODULE_NOT_FOUND en bucle.
- * Este módulo solo se usa en rutas server / scripts / workers.
+ * Sin import 'server-only': el contenedor workers (tsx) no resuelve ese
+ * paquete y entraba en crash loop MODULE_NOT_FOUND.
  */
 
 import fs from 'node:fs';
@@ -23,135 +22,216 @@ let writingFromLogger = false;
 
 declare global {
   // eslint-disable-next-line no-var
-  var __divinittysLogCaptureInstalled: boolean | undefined;
-  var __divinittysProcessErrorLoggingInstalled: boolean | undefined;
+  var __DIVINITTYS_CONSOLE_CAPTURE_INSTALLED__: boolean | undefined;
+  // eslint-disable-next-line no-var
+  var __DIVINITTYS_PROCESS_LOGGING_INSTALLED__: boolean | undefined;
 }
 
-function resolveLogDirectory(): string {
-  const candidates = [
-    process.env.LOG_DIRECTORY,
-    process.env.LOG_DIR,
-    path.join(process.cwd(), 'log'),
-    path.join(process.cwd(), 'logs'),
-    '/tmp/divinittys-logs',
-  ].filter(Boolean) as string[];
-
-  for (const dir of candidates) {
-    try {
-      fs.mkdirSync(dir, { recursive: true });
-      const probe = path.join(dir, '.write-test');
-      fs.writeFileSync(probe, 'ok');
-      fs.unlinkSync(probe);
-      return dir;
-    } catch {
-      // try next
+function normalizeDeploymentDate(value?: string): string {
+  if (value) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.valueOf())) {
+      return parsed.toISOString().slice(0, 10);
     }
+
+    const dateMatch = value.match(/\d{4}-\d{2}-\d{2}/);
+    if (dateMatch) return dateMatch[0];
   }
-  return path.join(process.cwd(), 'log');
+
+  return new Date().toISOString().slice(0, 10);
 }
 
-const LOG_DIRECTORY = resolveLogDirectory();
+const deploymentDate = normalizeDeploymentDate(
+  process.env.LOG_DEPLOYMENT_DATE ||
+    process.env.DEPLOYMENT_DATE ||
+    process.env.DEPLOYED_AT ||
+    process.env.RELEASE_CREATED_AT
+);
 
-function todayFile(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return path.join(LOG_DIRECTORY, `${y}-${m}-${day}.log`);
+const deploymentId =
+  process.env.LOG_DEPLOYMENT_ID ||
+  process.env.RENDER_GIT_COMMIT ||
+  process.env.VERCEL_GIT_COMMIT_SHA ||
+  process.env.FLY_ALLOC_ID ||
+  'local';
+
+function getLogRoot(): string {
+  return path.resolve(process.cwd(), process.env.LOG_DIR || 'log');
 }
 
-function safeSerialize(data: LogData): string {
+function getDeploymentLogDir(): string {
+  return path.join(getLogRoot(), deploymentDate);
+}
+
+function isFileLoggingEnabled(): boolean {
+  if (process.env.LOG_TO_FILE === 'false') return false;
+  if (process.env.NODE_ENV === 'test' && process.env.LOG_TO_FILE !== 'true') return false;
+  return process.env.NEXT_RUNTIME !== 'edge';
+}
+
+function ensureLogDirectory(): boolean {
+  if (!isFileLoggingEnabled()) return false;
+  if (fileLoggingAvailable !== null) return fileLoggingAvailable;
+
   try {
-    return JSON.stringify({
-      ...data,
-      ts: data.ts || new Date().toISOString(),
-      env: process.env.NODE_ENV || 'development',
-      deploymentDate: process.env.DEPLOYMENT_DATE || undefined,
-      deploymentId: process.env.DEPLOYMENT_ID || undefined,
-      pid: process.pid,
-    });
-  } catch {
-    return JSON.stringify({ level: 'error', event: 'logger.serialize_failed', ts: new Date().toISOString() });
+    fs.mkdirSync(getDeploymentLogDir(), { recursive: true });
+    fileLoggingAvailable = true;
+  } catch (error) {
+    fileLoggingAvailable = false;
+    originalConsole.warn('[logger] file logging disabled:', error instanceof Error ? error.message : error);
   }
+
+  return fileLoggingAvailable;
 }
 
-function writeLine(level: LogLevel, event: string, data: LogData = {}): void {
-  const payload = safeSerialize({ level, event, ...data });
-  if (level === 'error') originalConsole.error(payload);
-  else if (level === 'warn') originalConsole.warn(payload);
-  else originalConsole.log(payload);
+function serialize(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      stack: value.stack,
+      cause: value.cause ? serialize(value.cause, seen) : undefined,
+    };
+  }
 
-  if (writingFromLogger) return;
+  if (typeof value === 'bigint') return value.toString();
+  if (typeof value !== 'object' || value === null) return value;
+
+  if (seen.has(value)) return '[Circular]';
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.map((item) => serialize(item, seen));
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, serialize(item, seen)])
+  );
+}
+
+function normalizeData(data?: LogData): LogData {
+  if (!data) return {};
+  return serialize(data) as LogData;
+}
+
+function appendLine(fileName: string, line: string, sync = false) {
+  if (!ensureLogDirectory()) return;
+
+  const filePath = path.join(getDeploymentLogDir(), fileName);
+  if (sync) {
+    try {
+      fs.appendFileSync(filePath, line, 'utf8');
+    } catch (error) {
+      fileLoggingAvailable = false;
+      originalConsole.warn('[logger] file logging disabled:', error instanceof Error ? error.message : error);
+    }
+    return;
+  }
+
+  fs.promises.appendFile(filePath, line, 'utf8').catch((error) => {
+    fileLoggingAvailable = false;
+    originalConsole.warn('[logger] file logging disabled:', error instanceof Error ? error.message : error);
+  });
+}
+
+function writeFiles(level: LogLevel, line: string) {
+  const sync = level === 'error';
+  appendLine('app.log', line, sync);
+  if (level === 'error') appendLine('errors.log', line, true);
+}
+
+function emitToConsole(level: LogLevel, line: string) {
   writingFromLogger = true;
   try {
-    if (fileLoggingAvailable === false) return;
-    try {
-      fs.appendFileSync(todayFile(), payload + '\n');
-      fileLoggingAvailable = true;
-    } catch {
-      fileLoggingAvailable = false;
+    if (level === 'error') {
+      originalConsole.error(line);
+      return;
     }
+    if (level === 'warn') {
+      originalConsole.warn(line);
+      return;
+    }
+    originalConsole.log(line);
   } finally {
     writingFromLogger = false;
   }
 }
 
-export const logger = {
-  info(event: string, data?: LogData) {
-    writeLine('info', event, data || {});
-  },
-  warn(event: string, data?: LogData) {
-    writeLine('warn', event, data || {});
-  },
-  error(event: string, data?: LogData) {
-    writeLine('error', event, data || {});
-  },
-  getLogDirectory() {
-    return LOG_DIRECTORY;
-  },
-};
+function write(level: LogLevel, event: string, data?: LogData) {
+  const payload = {
+    ...normalizeData(data),
+    level,
+    event,
+    ts: new Date().toISOString(),
+    env: process.env.NODE_ENV || 'development',
+    deploymentDate,
+    deploymentId,
+    pid: process.pid,
+  };
 
-export function installGlobalLogCapture(): void {
-  if (globalThis.__divinittysLogCaptureInstalled) return;
-  globalThis.__divinittysLogCaptureInstalled = true;
+  const line = `${JSON.stringify(payload)}\n`;
+  writeFiles(level, line);
+  emitToConsole(level, line.trimEnd());
+}
 
+function formatConsoleArgs(args: unknown[]): string {
+  return args
+    .map((arg) => (typeof arg === 'string' ? arg : util.inspect(arg, { depth: 6, breakLength: Infinity })))
+    .join(' ');
+}
+
+function captureConsole(level: LogLevel, event: string, args: unknown[]) {
+  if (writingFromLogger) return;
+  const line = `${JSON.stringify({
+    level,
+    event,
+    ts: new Date().toISOString(),
+    env: process.env.NODE_ENV || 'development',
+    deploymentDate,
+    deploymentId,
+    pid: process.pid,
+    message: formatConsoleArgs(args),
+    args: serialize(args),
+  })}\n`;
+  writeFiles(level, line);
+}
+
+export function installGlobalLogCapture() {
+  if (process.env.LOG_CONSOLE_CAPTURE === 'false') return;
+  if (globalThis.__DIVINITTYS_CONSOLE_CAPTURE_INSTALLED__) return;
+
+  globalThis.__DIVINITTYS_CONSOLE_CAPTURE_INSTALLED__ = true;
   console.log = (...args: unknown[]) => {
-    if (writingFromLogger) {
-      originalConsole.log(...args);
-      return;
-    }
-    writeLine('info', 'console.log', { message: util.format(...args) });
+    originalConsole.log(...args);
+    captureConsole('info', 'console.log', args);
   };
   console.warn = (...args: unknown[]) => {
-    if (writingFromLogger) {
-      originalConsole.warn(...args);
-      return;
-    }
-    writeLine('warn', 'console.warn', { message: util.format(...args) });
+    originalConsole.warn(...args);
+    captureConsole('warn', 'console.warn', args);
   };
   console.error = (...args: unknown[]) => {
-    if (writingFromLogger) {
-      originalConsole.error(...args);
-      return;
-    }
-    writeLine('error', 'console.error', { message: util.format(...args) });
+    originalConsole.error(...args);
+    captureConsole('error', 'console.error', args);
   };
 }
 
-export function installProcessErrorLogging(): void {
-  if (globalThis.__divinittysProcessErrorLoggingInstalled) return;
-  globalThis.__divinittysProcessErrorLoggingInstalled = true;
+export function installProcessErrorLogging() {
+  if (globalThis.__DIVINITTYS_PROCESS_LOGGING_INSTALLED__) return;
+  globalThis.__DIVINITTYS_PROCESS_LOGGING_INSTALLED__ = true;
 
-  process.on('uncaughtException', (err) => {
-    writeLine('error', 'process.uncaughtException', {
-      error: err instanceof Error ? err.message : String(err),
-      stack: err instanceof Error ? err.stack : undefined,
-    });
+  process.on('uncaughtExceptionMonitor', (error) => {
+    logger.error('process.uncaught_exception', { error });
   });
+
   process.on('unhandledRejection', (reason) => {
-    writeLine('error', 'process.unhandledRejection', {
-      error: reason instanceof Error ? reason.message : String(reason),
-      stack: reason instanceof Error ? reason.stack : undefined,
-    });
+    logger.error('process.unhandled_rejection', { reason });
   });
 }
+
+export const logger = {
+  info: (event: string, data?: LogData) => write('info', event, data),
+  warn: (event: string, data?: LogData) => write('warn', event, data),
+  error: (event: string, data?: LogData) => write('error', event, data),
+  deploymentDate,
+  getLogDirectory: getDeploymentLogDir,
+};
