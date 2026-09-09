@@ -1,12 +1,13 @@
 # ============================================================
 # DIVINITTYS — CI/CD Pipeline
 # ============================================================
-# FIX: package-lock.json must be committed to the repo.
-# setup-node@v4 with cache:'npm' REQUIRES the lockfile to exist.
+# package-lock.json must be committed (required by setup-node cache
+# and by npm ci).
 #
-# Root cause of "Dependencies lock file is not found":
-#   package-lock.json was not tracked in git.
-# Solution: always commit package-lock.json (it is NOT in .gitignore).
+# Peer dependencies: next-auth (nodemailer optional) and
+# @bull-board/hono (hono). Install uses --legacy-peer-deps to match
+# the production Dockerfile and avoid strict peer failures in CI.
+# hono is also listed as a direct dependency for clarity.
 # ============================================================
 name: CI
 
@@ -41,21 +42,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # FIX: only enable npm cache if package-lock.json exists in the checkout.
-      # Using `hashFiles` implicitly checks existence; if missing, cache is skipped.
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          # cache-dependency-path is more explicit than relying on auto-discovery
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
-      # Use npm ci (requires lockfile) — fast, reproducible, CI-safe
+      # Align with Dockerfile: --legacy-peer-deps (bull-board/hono, next-auth peers)
       - name: Install dependencies
-        run: npm ci --include=dev
+        run: npm ci --include=dev --legacy-peer-deps
 
-      # Generate Prisma client without downloading engine binaries
       - name: Generate Prisma Client
         run: npx prisma generate
         env:
@@ -89,7 +86,6 @@ jobs:
     name: TypeScript Check
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Share the npm cache with unit-integration (same key = cache hit)
     needs: []  # run in parallel with unit-integration
 
     steps:
@@ -104,7 +100,7 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci --include=dev
+        run: npm ci --include=dev --legacy-peer-deps
 
       - name: Generate Prisma Client
         run: npx prisma generate
@@ -173,7 +169,7 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci --include=dev
+        run: npm ci --include=dev --legacy-peer-deps
 
       # Cache Playwright binaries separately (large download, rarely changes)
       - name: Cache Playwright browsers
@@ -193,7 +189,6 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
-      # FIX: Prisma generate BEFORE migrate (schema must be compiled first)
       - name: Generate Prisma Client
         run: npx prisma generate
 
@@ -203,8 +198,6 @@ jobs:
       - name: Seed database
         run: npx tsx prisma/seed.ts
 
-      # FIX: Use npm run build + start instead of dev for more stable CI
-      # dev server has random cold-start delays; production build is deterministic
       - name: Build Next.js application
         run: npm run build
         env:
@@ -212,22 +205,20 @@ jobs:
 
       - name: Start Next.js server (production mode)
         run: npm run start &
-        # The '&' puts it in background — PID is tracked by the runner shell
 
-      # FIX: Robust health check with retries + clear timeout error
       - name: Wait for server (health check)
         run: |
           echo "Waiting for http://localhost:3000/api/health ..."
           for i in $(seq 1 40); do
-            # Accept HTTP 200 (healthy/degraded) — reject only 503 (DB down) or connection refused
-            HTTP_CODE=$(curl -s -o /tmp/health_response.json -w "%{http_code}"               --max-time 5               http://localhost:3000/api/health 2>/dev/null || echo "000")
+            HTTP_CODE=$(curl -s -o /tmp/health_response.json -w "%{http_code}" \
+              --max-time 5 \
+              http://localhost:3000/api/health 2>/dev/null || echo "000")
 
             if [ "$HTTP_CODE" = "200" ]; then
               echo "✅ Server ready after ${i} attempts (HTTP 200)"
               cat /tmp/health_response.json
               exit 0
             elif [ "$HTTP_CODE" = "503" ]; then
-              # 503 = DB down = truly unhealthy, fail fast
               echo "❌ Server returned 503 (database unavailable)"
               cat /tmp/health_response.json
               exit 1
@@ -270,7 +261,6 @@ jobs:
     name: Docker Build Check
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # Run in parallel with unit tests — doesn't need their output
     needs: []
 
     steps:
@@ -280,7 +270,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Cache Docker layers — dramatically speeds up repeated builds
       - name: Cache Docker layers
         uses: actions/cache@v4
         with:
@@ -300,7 +289,6 @@ jobs:
             .
           echo "✅ Docker build successful"
 
-      # Rotate cache to avoid unbounded growth
       - name: Update Docker layer cache
         if: always()
         run: |
