@@ -108,31 +108,17 @@ export default function Footer() {
       </div>
 
       <div className="border-t border-charcoal-500">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-4 flex-wrap justify-center">
-              {['Webpay', 'MercadoPago', 'Visa', 'Mastercard'].map((method) => (
-                <span
-                  key={method}
-                  className="px-3 py-1.5 bg-charcoal-500 rounded-lg text-xs font-sans font-semibold text-charcoal-200"
-                >
-                  {method}
-                </span>
-              ))}
-            </div>
-            <div className="flex items-center gap-6 text-xs font-sans text-charcoal-400">
-              <span>🔒 Pago seguro</span>
-              <span>📦 Bluexpress</span>
-              <span>✅ Originales</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="border-t border-charcoal-500">
         <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <p className="font-sans text-xs text-charcoal-400">
-            © {new Date().getFullYear()} DIVINITTYS. Todos los derechos reservados.
+            © {new Date().getFullYear()} DIVINITTYS. Todos los derechos reservados.{' '}
+            Developed by{' '}
+            <a
+              href="https://netxia.cl/"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-primary-300 transition-colors">
+              netxia.cl
+            </a>
           </p>
           <div className="flex gap-4">
             <Link href="/privacidad" className="font-sans text-xs text-charcoal-400 hover:text-primary-300">
