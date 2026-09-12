@@ -193,8 +193,12 @@ export default function CheckoutForm() {
         formEl.appendChild(input);
         document.body.appendChild(formEl);
         formEl.submit();
-      } else if (paymentMethod === 'MERCADOPAGO' && (payData.data?.sandboxInitPoint || payData.data?.init_point || payData.data?.initPoint)) {
-        window.location.href = payData.data.sandboxInitPoint || payData.data.init_point || payData.data.initPoint;
+      } else if (paymentMethod === 'MERCADOPAGO') {
+        // Preferir la URL ya resuelta por el backend (init_point).
+        // No priorizar sandboxInitPoint: con token APP_USR debe ir a producción.
+        const url = payData.data?.init_point || payData.data?.initPoint;
+        if (!url) throw new Error('No se pudo iniciar el pago con MercadoPago.');
+        window.location.href = url;
       } else {
         throw new Error('No se pudo iniciar el pago.');
       }
