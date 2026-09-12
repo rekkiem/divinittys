@@ -155,6 +155,14 @@ export async function POST(req: NextRequest) {
         ? mp.sandbox_init_point || mp.init_point
         : mp.init_point || mp.sandbox_init_point;
 
+      // Diagnóstico: ver en logs del contenedor si se eligió sandbox o prod
+      console.info('[mp-preference]', {
+        orderId,
+        preferenceId: mp.id,
+        isSandbox: isSandbox(),
+        checkoutHost: checkoutUrl?.includes('sandbox.') ? 'sandbox' : 'production',
+      });
+
       return ok({
         preferenceId: mp.id,
         initPoint: mp.init_point,
