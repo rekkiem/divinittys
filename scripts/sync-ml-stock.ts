@@ -104,8 +104,11 @@ async function main() {
   console.log('DIVINITTYS — SYNC MERCADOLIBRE STOCK + PRICE + VARIANTS');
   console.log('(basePrice se omite si isOnSale=true; stock siempre se sincroniza)');
   let token = await getToken();
-  const products = await prisma.product.findMany({
-    where: { sku: { startsWith: 'ML-MLC' } },
+const products = await prisma.product.findMany({
+  where: {
+    sku: { startsWith: 'ML-MLC' },
+    duplicateOfId: null, // no sincronizar ni reactivar duplicados marcados
+  },
     include: { inventory: true, variants: true },
     orderBy: { sku: 'asc' },
   });
