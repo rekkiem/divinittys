@@ -155,6 +155,8 @@ model Product {
   name            String
   slug            String           @unique
   description     String?
+  /// Descripción completa traída de Mercado Libre (plain_text). No pisa description manual.
+  descriptionMl   String?          @db.Text
   shortDescription String?
   categoryId      String
   brandId         String?
@@ -173,6 +175,10 @@ model Product {
   duplicateOf     Product?         @relation("ProductDuplicates", fields: [duplicateOfId], references: [id], onDelete: SetNull)
   duplicates      Product[]        @relation("ProductDuplicates")
   // --- fin NUEVO ---
+  /// Última sincronización de enriquecimiento ML (atributos/descripción/rating).
+  lastMlSyncAt    DateTime?
+  /// ok | partial | error
+  mlSyncStatus    String?
   imageUrl        String?
   weight          Decimal?         @db.Decimal(8, 3)
   dimensions      Json?
@@ -217,13 +223,17 @@ model ProductImage {
 }
 
 model ProductAttribute {
-  id        String  @id @default(cuid())
+  id        String   @id @default(cuid())
   productId String
   name      String
   value     String
+  /// Origen del atributo: manual | mercadolibre
+  source    String?  @default("manual")
+  updatedAt DateTime @updatedAt
 
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
+  @@unique([productId, name])
   @@map("product_attributes")
 }
 
