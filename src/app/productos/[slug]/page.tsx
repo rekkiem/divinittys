@@ -61,7 +61,13 @@ export default async function ProductPage({ params }: { params: { slug: string }
     },
   });
 
-  const normalizedProduct = normalizeProductMedia(product);
+  // Fallback: description manual o descriptionMl de Mercado Libre
+  const productWithDesc = {
+    ...product,
+    description: product.description?.trim() || product.descriptionMl || null,
+  };
+
+  const normalizedProduct = normalizeProductMedia(productWithDesc);
   const normalizedRelated = normalizeProductsMedia(related);
 
   return (
