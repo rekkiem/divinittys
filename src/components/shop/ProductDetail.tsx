@@ -20,6 +20,7 @@ type Product = {
   slug: string;
   sku: string;
   description?: string | null;
+  descriptionMl?: string | null;
   shortDescription?: string | null;
   basePrice: PriceLike;
   comparePrice?: PriceLike | null;
@@ -77,6 +78,10 @@ export default function ProductDetail({ product }: { product: Product }) {
 
   const avgRating = product.reviews.length ? product.reviews.reduce((sum, r) => sum + r.rating, 0) / product.reviews.length : 0;
   const reviewDateFormatter = useMemo(() => new Intl.DateTimeFormat('es-CL', { timeZone: 'UTC' }), []);
+
+  // description ya llega resuelta (manual || descriptionMl) desde page.tsx
+  const displayDescription =
+    product.description?.trim() || product.descriptionMl?.trim() || '';
 
   useEffect(() => setHydrated(true), []);
   useEffect(() => setQuantity((q) => Math.min(Math.max(1, q), Math.max(1, maxQuantity))), [selectedVariant, maxQuantity]);
@@ -180,7 +185,7 @@ export default function ProductDetail({ product }: { product: Product }) {
       <div className="mt-16">
         <div className="flex border-b border-champagne-200">{(['description', 'attributes', 'reviews'] as const).map((tab) => <button key={tab} onClick={() => setActiveTab(tab)} className={`px-6 py-3 font-sans text-sm font-semibold transition-colors relative ${activeTab === tab ? 'text-primary-600' : 'text-charcoal-400 hover:text-charcoal-600'}`}>{tab === 'description' ? 'Descripción' : tab === 'attributes' ? 'Ficha técnica' : `Reseñas (${product.reviews.length})`}{activeTab === tab && <motion.div layoutId="tab-indicator" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />}</button>)}</div>
         <div className="py-8">
-          {activeTab === 'description' && <div className="prose max-w-none font-sans text-charcoal-600 leading-relaxed whitespace-pre-wrap">{product.description || 'Sin descripción disponible.'}</div>}
+          {activeTab === 'description' && <div className="prose max-w-none font-sans text-charcoal-600 leading-relaxed whitespace-pre-wrap">{displayDescription || 'Sin descripción disponible.'}</div>}
           {activeTab === 'attributes' && <div className="max-w-2xl">{product.attributes.length > 0 ? <table className="w-full"><tbody>{product.attributes.map((attr, i) => <tr key={attr.id} className={i % 2 === 0 ? 'bg-champagne-50' : ''}><td className="py-3 px-4 font-sans text-sm font-semibold text-charcoal-600 w-1/3 rounded-l-xl">{attr.name}</td><td className="py-3 px-4 font-sans text-sm text-charcoal-500 rounded-r-xl">{attr.value}</td></tr>)}</tbody></table> : <p className="font-sans text-charcoal-400">Sin especificaciones técnicas.</p>}</div>}
           {activeTab === 'reviews' && <div className="space-y-6">{product.reviews.length > 0 ? product.reviews.map((review) => <div key={review.id} className="border-b border-champagne-200 pb-6"><div className="flex items-center gap-2 mb-2"><div className="flex">{[1,2,3,4,5].map((s) => <Star key={s} className={`w-3.5 h-3.5 ${s <= review.rating ? 'text-primary-400 fill-primary-400' : 'text-charcoal-200'}`} />)}</div><span className="font-sans text-xs text-charcoal-400">{review.user?.name || 'Cliente'} · {reviewDateFormatter.format(new Date(review.createdAt))}</span></div>{review.title && <h4 className="font-sans font-semibold text-charcoal-700">{review.title}</h4>}{review.body && <p className="font-sans text-sm text-charcoal-500 mt-1">{review.body}</p>}</div>) : <p className="font-sans text-charcoal-400">Aún no hay reseñas.</p>}</div>}
         </div>
