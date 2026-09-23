@@ -175,6 +175,11 @@ model Product {
   duplicateOf     Product?         @relation("ProductDuplicates", fields: [duplicateOfId], references: [id], onDelete: SetNull)
   duplicates      Product[]        @relation("ProductDuplicates")
   // --- fin NUEVO ---
+  /// Rating agregado desde ML (Fase 2). Si ratingCount > 0, la UI lo prioriza sobre reseñas nativas.
+  ratingAverage   Float?
+  ratingCount     Int?
+  /// { one_star, two_star, three_star, four_star, five_star }
+  ratingLevelsJson Json?
   /// Última sincronización de enriquecimiento ML (atributos/descripción/rating).
   lastMlSyncAt    DateTime?
   /// ok | partial | error
