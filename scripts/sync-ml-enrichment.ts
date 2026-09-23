@@ -1,17 +1,19 @@
 /**
- * DIVINITTYS — Sync enriquecimiento ML (Fase 1)
+ * DIVINITTYS — Sync enriquecimiento ML (Fase 1 + 2)
  * - Atributos → ProductAttribute (upsert por productId+name, source=mercadolibre)
  * - Descripción → Product.descriptionMl (nunca pisa Product.description)
+ * - Rating → Product.ratingAverage, ratingCount, ratingLevelsJson (solo agregado; sin reseñas individuales)
  *
  * Uso:
  *   npx tsx scripts/sync-ml-enrichment.ts
  *   npx tsx scripts/sync-ml-enrichment.ts --limit=10
  *   npx tsx scripts/sync-ml-enrichment.ts --dry-run
- *   npx tsx scripts/sync-ml-enrichment.ts --cleanup-only  // solo borra attrs basura
+ *   npx tsx scripts/sync-ml-enrichment.ts --cleanup-only
  *
- * Flags de Setting (opcionales, default true si no existen):
+ * Flags Setting (default true si no existen):
  *   ml_sync_attributes_enabled
  *   ml_sync_description_enabled
+ *   ml_sync_rating_enabled
  */
 import { PrismaClient } from '@prisma/client';
 import { MlApiClient } from '../src/lib/mercadolibre/ml-api-client';
@@ -25,7 +27,6 @@ const cleanupOnly = args.includes('--cleanup-only');
 const limitArg = args.find((a) => a.startsWith('--limit='));
 const limit = limitArg ? parseInt(limitArg.split('=')[1], 10) : undefined;
 
-/** Valores que ML usa cuando el atributo no aplica / está vacío. */
 const JUNK_VALUES = new Set(['', '-1', 'null', 'undefined', 'n/a', 'na', '-']);
 
 const SKIP_ATTR_IDS = new Set([
@@ -50,7 +51,6 @@ async function getSettingBool(key: string, defaultValue: boolean): Promise<boole
 function isJunkValue(value: string): boolean {
   const v = value.trim().toLowerCase();
   if (JUNK_VALUES.has(v)) return true;
-  // Solo "-1" numérico o con espacios
   if (/^-?1$/.test(v)) return true;
   return false;
 }
@@ -65,7 +65,6 @@ function extractAttributes(item: any): { name: string; value: string }[] {
     if (SKIP_ATTR_IDS.has(id)) continue;
 
     const name = String(a?.name || a?.id || '').trim();
-    // Preferir value_name legible; value_id suele ser numérico interno
     let value = String(a?.value_name ?? '').trim();
     if (!value && a?.value_id != null) {
       value = String(a.value_id).trim();
@@ -73,7 +72,6 @@ function extractAttributes(item: any): { name: string; value: string }[] {
 
     if (!name || !value || isJunkValue(value)) continue;
 
-    // Evitar duplicar el mismo nombre en el mismo item
     const key = name.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -83,17 +81,12 @@ function extractAttributes(item: any): { name: string; value: string }[] {
   return out;
 }
 
-/** Borra atributos basura ya guardados (value -1, vacíos, source mercadolibre). */
 async function cleanupJunkAttributes(): Promise<number> {
   if (dryRun) {
     const count = await prisma.productAttribute.count({
       where: {
         source: 'mercadolibre',
-        OR: [
-          { value: '-1' },
-          { value: '' },
-          { value: { equals: 'null' } },
-        ],
+        OR: [{ value: '-1' }, { value: '' }, { value: { equals: 'null' } }],
       },
     });
     console.log(`[DRY-RUN] se eliminarían ~${count} atributos basura`);
@@ -117,11 +110,53 @@ async function cleanupJunkAttributes(): Promise<number> {
   return result.count;
 }
 
+function parseRatingPayload(data: any): {
+  average: number | null;
+  count: number | null;
+  levels: Record<string, number> | null;
+} {
+  if (!data || typeof data !== 'object') {
+    return { average: null, count: null, levels: null };
+  }
+  const average =
+    typeof data.rating_average === 'number'
+      ? data.rating_average
+      : typeof data.stars === 'number'
+        ? data.stars
+        : null;
+  const pagingTotal =
+    typeof data.paging?.total === 'number'
+      ? data.paging.total
+      : typeof data.paging?.kvs_total === 'number'
+        ? data.paging.kvs_total
+        : null;
+  const levelsRaw = data.rating_levels;
+  let count: number | null = pagingTotal;
+  let levels: Record<string, number> | null = null;
+  if (levelsRaw && typeof levelsRaw === 'object') {
+    levels = {
+      one_star: Number(levelsRaw.one_star ?? 0) || 0,
+      two_star: Number(levelsRaw.two_star ?? 0) || 0,
+      three_star: Number(levelsRaw.three_star ?? 0) || 0,
+      four_star: Number(levelsRaw.four_star ?? 0) || 0,
+      five_star: Number(levelsRaw.five_star ?? 0) || 0,
+    };
+    if (count == null) {
+      count =
+        levels.one_star +
+        levels.two_star +
+        levels.three_star +
+        levels.four_star +
+        levels.five_star;
+    }
+  }
+  return { average, count, levels };
+}
+
 async function main() {
-  console.log('DIVINITTYS — SYNC ML ENRICHMENT (atributos + descripción)');
+  console.log('DIVINITTYS — SYNC ML ENRICHMENT (attrs + desc + rating)');
   if (dryRun) console.log('[DRY-RUN] no se escribirá en DB');
 
-  // Siempre limpiar basura previa (también con --cleanup-only)
   await cleanupJunkAttributes();
   if (cleanupOnly) {
     console.log('Solo limpieza (--cleanup-only). Fin.');
@@ -130,10 +165,13 @@ async function main() {
 
   const syncAttributes = await getSettingBool('ml_sync_attributes_enabled', true);
   const syncDescription = await getSettingBool('ml_sync_description_enabled', true);
-  console.log(`Flags: attributes=${syncAttributes} description=${syncDescription}`);
+  const syncRating = await getSettingBool('ml_sync_rating_enabled', true);
+  console.log(
+    `Flags: attributes=${syncAttributes} description=${syncDescription} rating=${syncRating}`
+  );
 
-  if (!syncAttributes && !syncDescription) {
-    console.log('Ambos flags desactivados. Nada que hacer.');
+  if (!syncAttributes && !syncDescription && !syncRating) {
+    console.log('Todos los flags desactivados. Nada que hacer.');
     return;
   }
 
@@ -163,6 +201,7 @@ async function main() {
   let errors = 0;
   let attrsUpserted = 0;
   let descUpdated = 0;
+  let ratingUpdated = 0;
 
   for (let offset = 0; offset < products.length; offset += BATCH_SIZE) {
     const batch = products.slice(offset, offset + BATCH_SIZE);
@@ -210,8 +249,8 @@ async function main() {
       try {
         let hadError = false;
         let changed = false;
+        const parts: string[] = [];
 
-        // --- Atributos ---
         if (syncAttributes) {
           const attrs = extractAttributes(item);
           if (!dryRun) {
@@ -236,10 +275,12 @@ async function main() {
           } else {
             attrsUpserted += attrs.length;
           }
-          if (attrs.length > 0) changed = true;
+          if (attrs.length > 0) {
+            changed = true;
+            parts.push('attrs');
+          }
         }
 
-        // --- Descripción ---
         if (syncDescription) {
           try {
             const desc = await client.getDescription(String(item.id));
@@ -253,11 +294,44 @@ async function main() {
               }
               descUpdated++;
               changed = true;
+              parts.push('desc');
             }
           } catch (descErr: any) {
-            // 404 = sin descripción en ML; no es error fatal
             if (!String(descErr.message).includes('404')) {
               console.warn(`  [DESC] ${product.sku}: ${descErr.message}`);
+              hadError = true;
+            }
+          }
+        }
+
+        // --- Rating (solo agregado; limit=1 para minimizar payload) ---
+        if (syncRating) {
+          try {
+            const reviewsData = await client.getReviews(String(item.id), {
+              offset: 0,
+              limit: 1,
+            });
+            const { average, count, levels } = parseRatingPayload(reviewsData);
+            if (average != null || (count != null && count > 0)) {
+              if (!dryRun) {
+                await prisma.product.update({
+                  where: { id: product.id },
+                  data: {
+                    ratingAverage: average,
+                    ratingCount: count,
+                    ratingLevelsJson: levels ?? undefined,
+                  },
+                });
+              }
+              ratingUpdated++;
+              changed = true;
+              parts.push(`rating=${average ?? '?'}(${count ?? 0})`);
+            }
+          } catch (ratingErr: any) {
+            const msg = String(ratingErr.message || '');
+            // 404 = sin reviews; no es error fatal
+            if (!msg.includes('404')) {
+              console.warn(`  [RATING] ${product.sku}: ${msg}`);
               hadError = true;
             }
           }
@@ -277,7 +351,7 @@ async function main() {
         else ok++;
 
         if (changed) {
-          console.log(`  [OK] ${product.sku} — attrs+desc`);
+          console.log(`  [OK] ${product.sku} — ${parts.join('+') || 'sync'}`);
         }
       } catch (err: any) {
         errors++;
@@ -300,6 +374,7 @@ async function main() {
   console.log(`Errores:         ${errors}`);
   console.log(`Attrs upserted:  ${attrsUpserted}`);
   console.log(`Desc actualizadas: ${descUpdated}`);
+  console.log(`Ratings actualizados: ${ratingUpdated}`);
   if (errors > 0) process.exitCode = 1;
 }
 
