@@ -1,25 +1,23 @@
 /**
- * DIVINITTYS — Sync enriquecimiento ML (Fase 1 + 2)
- * - Atributos → ProductAttribute (upsert por productId+name, source=mercadolibre)
- * - Descripción → Product.descriptionMl (nunca pisa Product.description)
- * - Rating → Product.ratingAverage, ratingCount, ratingLevelsJson (solo agregado; sin reseñas individuales)
+ * DIVINITTYS — Sync enriquecimiento ML (Fase 1 + 2 + 3)
+ * - Atributos → ProductAttribute
+ * - Descripción → Product.descriptionMl
+ * - Rating → ratingAverage / ratingCount / ratingLevelsJson
+ * - Opiniones → ProductReview (textos individuales de ML)
  *
- * Uso:
- *   npx tsx scripts/sync-ml-enrichment.ts
- *   npx tsx scripts/sync-ml-enrichment.ts --limit=10
- *   npx tsx scripts/sync-ml-enrichment.ts --dry-run
- *   npx tsx scripts/sync-ml-enrichment.ts --cleanup-only
- *
- * Flags Setting (default true si no existen):
+ * Flags Setting (default true):
  *   ml_sync_attributes_enabled
  *   ml_sync_description_enabled
  *   ml_sync_rating_enabled
+ *   ml_sync_reviews_enabled
  */
 import { PrismaClient } from '@prisma/client';
 import { MlApiClient } from '../src/lib/mercadolibre/ml-api-client';
 
 const prisma = new PrismaClient();
 const BATCH_SIZE = 20;
+/** Máx. opiniones a guardar por producto (API ML). */
+const REVIEWS_PER_PRODUCT = 15;
 
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
@@ -153,8 +151,70 @@ function parseRatingPayload(data: any): {
   return { average, count, levels };
 }
 
+/** Extrae opiniones con texto de la respuesta /reviews/item. */
+function extractReviewRows(data: any): {
+  mlReviewId: string;
+  rating: number;
+  title: string | null;
+  content: string | null;
+  authorName: string | null;
+  reviewedAt: Date | null;
+}[] {
+  const list = Array.isArray(data?.reviews) ? data.reviews : [];
+  const out: {
+    mlReviewId: string;
+    rating: number;
+    title: string | null;
+    content: string | null;
+    authorName: string | null;
+    reviewedAt: Date | null;
+  }[] = [];
+
+  for (const r of list) {
+    const mlReviewId = String(r?.id ?? r?.review_id ?? '').trim();
+    if (!mlReviewId) continue;
+
+    const rating = Number(r?.rate ?? r?.rating ?? r?.score ?? 0);
+    if (!Number.isFinite(rating) || rating < 1) continue;
+
+    const title = (r?.title || r?.headline || '').toString().trim() || null;
+    const content =
+      (r?.content || r?.comment || r?.text || r?.review || '')
+        .toString()
+        .trim() || null;
+    // Sin texto ni título no aporta valor en UI
+    if (!content && !title) continue;
+
+    const authorName =
+      (r?.reviewer?.nickname ||
+        r?.reviewer?.name ||
+        r?.buyer?.nickname ||
+        r?.user?.nickname ||
+        '')
+        .toString()
+        .trim() || null;
+
+    let reviewedAt: Date | null = null;
+    const rawDate = r?.date_created || r?.created_at || r?.date || null;
+    if (rawDate) {
+      const d = new Date(rawDate);
+      if (!Number.isNaN(d.getTime())) reviewedAt = d;
+    }
+
+    out.push({
+      mlReviewId,
+      rating: Math.min(5, Math.max(1, Math.round(rating))),
+      title,
+      content,
+      authorName,
+      reviewedAt,
+    });
+  }
+  return out;
+}
+
 async function main() {
-  console.log('DIVINITTYS — SYNC ML ENRICHMENT (attrs + desc + rating)');
+  console.log('DIVINITTYS — SYNC ML ENRICHMENT (attrs + desc + rating + reviews)');
   if (dryRun) console.log('[DRY-RUN] no se escribirá en DB');
 
   await cleanupJunkAttributes();
@@ -166,11 +226,12 @@ async function main() {
   const syncAttributes = await getSettingBool('ml_sync_attributes_enabled', true);
   const syncDescription = await getSettingBool('ml_sync_description_enabled', true);
   const syncRating = await getSettingBool('ml_sync_rating_enabled', true);
+  const syncReviews = await getSettingBool('ml_sync_reviews_enabled', true);
   console.log(
-    `Flags: attributes=${syncAttributes} description=${syncDescription} rating=${syncRating}`
+    `Flags: attributes=${syncAttributes} description=${syncDescription} rating=${syncRating} reviews=${syncReviews}`
   );
 
-  if (!syncAttributes && !syncDescription && !syncRating) {
+  if (!syncAttributes && !syncDescription && !syncRating && !syncReviews) {
     console.log('Todos los flags desactivados. Nada que hacer.');
     return;
   }
@@ -202,6 +263,7 @@ async function main() {
   let attrsUpserted = 0;
   let descUpdated = 0;
   let ratingUpdated = 0;
+  let reviewsUpserted = 0;
 
   for (let offset = 0; offset < products.length; offset += BATCH_SIZE) {
     const batch = products.slice(offset, offset + BATCH_SIZE);
@@ -304,34 +366,75 @@ async function main() {
           }
         }
 
-        // --- Rating (solo agregado; limit=1 para minimizar payload) ---
-        if (syncRating) {
+        // Rating + reviews (una sola llamada si ambas flags)
+        if (syncRating || syncReviews) {
           try {
             const reviewsData = await client.getReviews(String(item.id), {
               offset: 0,
-              limit: 1,
+              limit: syncReviews ? REVIEWS_PER_PRODUCT : 1,
             });
-            const { average, count, levels } = parseRatingPayload(reviewsData);
-            if (average != null || (count != null && count > 0)) {
-              if (!dryRun) {
-                await prisma.product.update({
-                  where: { id: product.id },
-                  data: {
-                    ratingAverage: average,
-                    ratingCount: count,
-                    ratingLevelsJson: levels ?? undefined,
-                  },
-                });
+
+            if (syncRating) {
+              const { average, count, levels } = parseRatingPayload(reviewsData);
+              if (average != null || (count != null && count > 0)) {
+                if (!dryRun) {
+                  await prisma.product.update({
+                    where: { id: product.id },
+                    data: {
+                      ratingAverage: average,
+                      ratingCount: count,
+                      ratingLevelsJson: levels ?? undefined,
+                    },
+                  });
+                }
+                ratingUpdated++;
+                changed = true;
+                parts.push(`rating=${average ?? '?'}(${count ?? 0})`);
               }
-              ratingUpdated++;
-              changed = true;
-              parts.push(`rating=${average ?? '?'}(${count ?? 0})`);
+            }
+
+            if (syncReviews) {
+              const rows = extractReviewRows(reviewsData);
+              if (!dryRun) {
+                for (const row of rows) {
+                  await prisma.productReview.upsert({
+                    where: {
+                      productId_mlReviewId: {
+                        productId: product.id,
+                        mlReviewId: row.mlReviewId,
+                      },
+                    },
+                    create: {
+                      productId: product.id,
+                      mlReviewId: row.mlReviewId,
+                      rating: row.rating,
+                      title: row.title,
+                      content: row.content,
+                      authorName: row.authorName,
+                      reviewedAt: row.reviewedAt,
+                    },
+                    update: {
+                      rating: row.rating,
+                      title: row.title,
+                      content: row.content,
+                      authorName: row.authorName,
+                      reviewedAt: row.reviewedAt,
+                    },
+                  });
+                  reviewsUpserted++;
+                }
+              } else {
+                reviewsUpserted += rows.length;
+              }
+              if (rows.length > 0) {
+                changed = true;
+                parts.push(`reviews=${rows.length}`);
+              }
             }
           } catch (ratingErr: any) {
             const msg = String(ratingErr.message || '');
-            // 404 = sin reviews; no es error fatal
             if (!msg.includes('404')) {
-              console.warn(`  [RATING] ${product.sku}: ${msg}`);
+              console.warn(`  [REVIEWS] ${product.sku}: ${msg}`);
               hadError = true;
             }
           }
@@ -375,6 +478,7 @@ async function main() {
   console.log(`Attrs upserted:  ${attrsUpserted}`);
   console.log(`Desc actualizadas: ${descUpdated}`);
   console.log(`Ratings actualizados: ${ratingUpdated}`);
+  console.log(`Reviews upserted: ${reviewsUpserted}`);
   if (errors > 0) process.exitCode = 1;
 }
 
