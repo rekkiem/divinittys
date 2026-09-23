@@ -178,8 +178,7 @@ export default function ProductDetail({ product }: { product: Product }) {
                 ))}
               </div>
               <span className="font-sans text-sm text-charcoal-400">
-                {avgRating.toFixed(1)} ({ratingLabelCount} {mlCount > 0 ? 'calificaciones' : 'reseñas'}
-                {mlCount > 0 ? ' en ML' : ''})
+                {avgRating.toFixed(1)} ({ratingLabelCount} calificaciones)
               </span>
             </div>
           )}
@@ -258,17 +257,15 @@ export default function ProductDetail({ product }: { product: Product }) {
           )}
           {activeTab === 'reviews' && (
             <div className="space-y-8 max-w-3xl">
-              {mlCount > 0 && (
+              {/* Solo mostrar resumen de calificación si hay opiniones o reseñas nativas para acompañar */}
+              {showRating && (mlReviews.length > 0 || product.reviews.length > 0) && (
                 <p className="font-sans text-sm text-charcoal-500">
-                  Calificación en Mercado Libre: <strong>{avgRating.toFixed(1)}</strong> ({mlCount} calificaciones).
+                  Calificación promedio: <strong>{avgRating.toFixed(1)}</strong> ({ratingLabelCount} calificaciones)
                 </p>
               )}
 
               {mlReviews.length > 0 && (
                 <div className="space-y-6">
-                  <h3 className="font-sans text-sm font-semibold text-charcoal-600 uppercase tracking-wide">
-                    Opiniones de compradores (Mercado Libre)
-                  </h3>
                   {mlReviews.map((review) => (
                     <div key={review.id} className="border-b border-champagne-200 pb-6">
                       <div className="flex items-center gap-2 mb-2">
@@ -281,7 +278,7 @@ export default function ProductDetail({ product }: { product: Product }) {
                           ))}
                         </div>
                         <span className="font-sans text-xs text-charcoal-400">
-                          {review.authorName || 'Comprador ML'}
+                          {review.authorName || 'Comprador'}
                           {review.reviewedAt
                             ? ` · ${reviewDateFormatter.format(new Date(review.reviewedAt))}`
                             : ''}
@@ -300,9 +297,6 @@ export default function ProductDetail({ product }: { product: Product }) {
 
               {product.reviews.length > 0 && (
                 <div className="space-y-6">
-                  <h3 className="font-sans text-sm font-semibold text-charcoal-600 uppercase tracking-wide">
-                    Reseñas de clientes Divinittys
-                  </h3>
                   {product.reviews.map((review) => (
                     <div key={review.id} className="border-b border-champagne-200 pb-6">
                       <div className="flex items-center gap-2 mb-2">
@@ -325,11 +319,12 @@ export default function ProductDetail({ product }: { product: Product }) {
                 </div>
               )}
 
+              {/* Sin mensajes técnicos: si solo hay rating agregado sin textos, mostrar solo estrellas arriba; aquí mensaje neutro */}
               {mlReviews.length === 0 && product.reviews.length === 0 && (
                 <p className="font-sans text-charcoal-400">
-                  {mlCount > 0
-                    ? 'Hay calificación en Mercado Libre, pero esta publicación no tiene opiniones con texto disponibles vía API.'
-                    : 'Aún no hay reseñas.'}
+                  {showRating
+                    ? 'Todavía no hay opiniones escritas para este producto.'
+                    : 'Aún no hay reseñas para este producto.'}
                 </p>
               )}
             </div>
