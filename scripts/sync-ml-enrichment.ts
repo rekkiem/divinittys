@@ -7,6 +7,7 @@
  *   npx tsx scripts/sync-ml-enrichment.ts
  *   npx tsx scripts/sync-ml-enrichment.ts --limit=10
  *   npx tsx scripts/sync-ml-enrichment.ts --dry-run
+ *   npx tsx scripts/sync-ml-enrichment.ts --cleanup-only  // solo borra attrs basura
  *
  * Flags de Setting (opcionales, default true si no existen):
  *   ml_sync_attributes_enabled
@@ -20,8 +21,22 @@ const BATCH_SIZE = 20;
 
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
+const cleanupOnly = args.includes('--cleanup-only');
 const limitArg = args.find((a) => a.startsWith('--limit='));
 const limit = limitArg ? parseInt(limitArg.split('=')[1], 10) : undefined;
+
+/** Valores que ML usa cuando el atributo no aplica / está vacío. */
+const JUNK_VALUES = new Set(['', '-1', 'null', 'undefined', 'n/a', 'na', '-']);
+
+const SKIP_ATTR_IDS = new Set([
+  'ITEM_CONDITION',
+  'SELLER_SKU',
+  'GTIN',
+  'EMPTY_GTIN_REASON',
+  'PRODUCT_FEATURES',
+  'IS_FLAMMABLE',
+  'HAS_ENERGY_EFFICIENCY_LABEL',
+]);
 
 async function getSettingBool(key: string, defaultValue: boolean): Promise<boolean> {
   const row = await prisma.setting.findUnique({ where: { key } });
@@ -32,24 +47,86 @@ async function getSettingBool(key: string, defaultValue: boolean): Promise<boole
   return defaultValue;
 }
 
+function isJunkValue(value: string): boolean {
+  const v = value.trim().toLowerCase();
+  if (JUNK_VALUES.has(v)) return true;
+  // Solo "-1" numérico o con espacios
+  if (/^-?1$/.test(v)) return true;
+  return false;
+}
+
 function extractAttributes(item: any): { name: string; value: string }[] {
   const attrs = Array.isArray(item?.attributes) ? item.attributes : [];
   const out: { name: string; value: string }[] = [];
+  const seen = new Set<string>();
+
   for (const a of attrs) {
-    const name = String(a?.name || a?.id || '').trim();
-    const value = String(a?.value_name ?? a?.value_id ?? '').trim();
-    if (!name || !value) continue;
-    // Evitar atributos internos/ocultos poco útiles en ficha
     const id = String(a?.id || '').toUpperCase();
-    if (['ITEM_CONDITION', 'SELLER_SKU', 'GTIN', 'EMPTY_GTIN_REASON'].includes(id)) continue;
+    if (SKIP_ATTR_IDS.has(id)) continue;
+
+    const name = String(a?.name || a?.id || '').trim();
+    // Preferir value_name legible; value_id suele ser numérico interno
+    let value = String(a?.value_name ?? '').trim();
+    if (!value && a?.value_id != null) {
+      value = String(a.value_id).trim();
+    }
+
+    if (!name || !value || isJunkValue(value)) continue;
+
+    // Evitar duplicar el mismo nombre en el mismo item
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
     out.push({ name, value });
   }
   return out;
 }
 
+/** Borra atributos basura ya guardados (value -1, vacíos, source mercadolibre). */
+async function cleanupJunkAttributes(): Promise<number> {
+  if (dryRun) {
+    const count = await prisma.productAttribute.count({
+      where: {
+        source: 'mercadolibre',
+        OR: [
+          { value: '-1' },
+          { value: '' },
+          { value: { equals: 'null' } },
+        ],
+      },
+    });
+    console.log(`[DRY-RUN] se eliminarían ~${count} atributos basura`);
+    return count;
+  }
+
+  const result = await prisma.productAttribute.deleteMany({
+    where: {
+      source: 'mercadolibre',
+      OR: [
+        { value: '-1' },
+        { value: '' },
+        { value: 'null' },
+        { value: 'undefined' },
+        { value: 'N/A' },
+        { value: 'n/a' },
+      ],
+    },
+  });
+  console.log(`Limpieza: eliminados ${result.count} atributos basura (-1 / vacíos)`);
+  return result.count;
+}
+
 async function main() {
   console.log('DIVINITTYS — SYNC ML ENRICHMENT (atributos + descripción)');
   if (dryRun) console.log('[DRY-RUN] no se escribirá en DB');
+
+  // Siempre limpiar basura previa (también con --cleanup-only)
+  await cleanupJunkAttributes();
+  if (cleanupOnly) {
+    console.log('Solo limpieza (--cleanup-only). Fin.');
+    return;
+  }
 
   const syncAttributes = await getSettingBool('ml_sync_attributes_enabled', true);
   const syncDescription = await getSettingBool('ml_sync_description_enabled', true);
