@@ -22,12 +22,9 @@ model User {
   emailVerified DateTime?
   name          String?
   phone         String?
-  // Opcional: usuarios OAuth (Google) no tienen contraseña
   passwordHash  String?
   role          Role      @default(CUSTOMER)
-  // avatar: usado por la app (JWT, UI)
   avatar        String?
-  // image: requerido por @auth/prisma-adapter (Auth.js mapea profile.picture → image)
   image         String?
   isActive      Boolean   @default(true)
   createdAt     DateTime  @default(now())
@@ -51,10 +48,6 @@ enum Role {
   CUSTOMER
 }
 
-/**
- * Account — requerido por @auth/prisma-adapter (NextAuth / Auth.js)
- * Almacena los tokens OAuth de Google (y futuros providers).
- */
 model Account {
   id                String  @id @default(cuid())
   userId            String
@@ -155,7 +148,6 @@ model Product {
   name            String
   slug            String           @unique
   description     String?
-  /// Descripción completa traída de Mercado Libre (plain_text). No pisa description manual.
   descriptionMl   String?          @db.Text
   shortDescription String?
   categoryId      String
@@ -167,22 +159,14 @@ model Product {
   isFeatured      Boolean          @default(false)
   isOnSale        Boolean          @default(false)
   tags            String[]
-  // --- NUEVO ---
-  /// ID de producto de catálogo de Mercado Libre (catalog_product_id).
   mlCatalogProductId String?
-  /// Si este producto es duplicado de otro, apunta al canónico. Nunca DELETE.
   duplicateOfId   String?
   duplicateOf     Product?         @relation("ProductDuplicates", fields: [duplicateOfId], references: [id], onDelete: SetNull)
   duplicates      Product[]        @relation("ProductDuplicates")
-  // --- fin NUEVO ---
-  /// Rating agregado desde ML (Fase 2). Si ratingCount > 0, la UI lo prioriza sobre reseñas nativas.
   ratingAverage   Float?
   ratingCount     Int?
-  /// { one_star, two_star, three_star, four_star, five_star }
   ratingLevelsJson Json?
-  /// Última sincronización de enriquecimiento ML (atributos/descripción/rating).
   lastMlSyncAt    DateTime?
-  /// ok | partial | error
   mlSyncStatus    String?
   imageUrl        String?
   weight          Decimal?         @db.Decimal(8, 3)
@@ -193,6 +177,8 @@ model Product {
   inventory       Inventory?
   orderItems      OrderItem[]
   reviews         Review[]
+  /// Opiniones traídas de Mercado Libre (Fase 3). Separado de Review nativo.
+  mlReviews       ProductReview[]
   wishlistItems   WishlistItem[]
   vendorId        String?
   createdAt       DateTime         @default(now())
@@ -207,10 +193,8 @@ model Product {
   @@index([categoryId])
   @@index([brandId])
   @@index([isActive, isFeatured])
-  // --- NUEVO ---
   @@index([mlCatalogProductId])
   @@index([duplicateOfId])
-  // --- fin NUEVO ---
   @@map("products")
 }
 
@@ -232,7 +216,6 @@ model ProductAttribute {
   productId String
   name      String
   value     String
-  /// Origen del atributo: manual | mercadolibre
   source    String?  @default("manual")
   updatedAt DateTime @updatedAt
 
@@ -240,6 +223,29 @@ model ProductAttribute {
 
   @@unique([productId, name])
   @@map("product_attributes")
+}
+
+/// Opinión individual desde Mercado Libre (no confundir con Review de clientes Divinittys).
+model ProductReview {
+  id          String   @id @default(cuid())
+  productId   String
+  /// ID de la review en ML (idempotencia).
+  mlReviewId  String
+  rating      Int
+  title       String?
+  content     String?  @db.Text
+  /// Nombre público del comprador en ML (si viene).
+  authorName  String?
+  /// Fecha de la opinión en ML.
+  reviewedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, mlReviewId])
+  @@index([productId, reviewedAt])
+  @@map("product_reviews")
 }
 
 model ProductVariant {
