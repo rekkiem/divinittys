@@ -14,18 +14,30 @@ import toast from 'react-hot-toast';
 type PriceLike = number | string | { toString: () => string };
 type Variant = { id: string; name: string; sku: string; price: PriceLike; stock: number; image?: string | null; options?: any };
 
+type MlReview = {
+  id: string;
+  rating: number;
+  title?: string | null;
+  content?: string | null;
+  authorName?: string | null;
+  reviewedAt?: Date | string | null;
+};
+
 type Product = {
   id: string;
   name: string;
   slug: string;
   sku: string;
   description?: string | null;
+  descriptionMl?: string | null;
   shortDescription?: string | null;
   basePrice: PriceLike;
   comparePrice?: PriceLike | null;
   isOnSale?: boolean;
   isFeatured?: boolean;
   imageUrl?: string | null;
+  ratingAverage?: number | null;
+  ratingCount?: number | null;
   images: { id: string; url: string; alt?: string | null; isMain: boolean }[];
   brand?: { id: string; name: string; slug: string } | null;
   category?: { id: string; name: string; slug: string; parent?: { name: string; slug: string } | null } | null;
@@ -33,6 +45,7 @@ type Product = {
   attributes: { id: string; name: string; value: string }[];
   variants: Variant[];
   reviews: { id: string; rating: number; title?: string | null; body?: string | null; user: { name?: string | null }; createdAt: Date }[];
+  mlReviews?: MlReview[];
 };
 
 const TRUST_BADGES = [
@@ -75,8 +88,22 @@ export default function ProductDetail({ product }: { product: Product }) {
     return [{ id: `variant-${variant!.id}`, url: variantImage, alt: variant!.name, isMain: true }, ...productImages];
   }, [productImages, variant, variantImage]);
 
-  const avgRating = product.reviews.length ? product.reviews.reduce((sum, r) => sum + r.rating, 0) / product.reviews.length : 0;
+  const mlReviews = product.mlReviews ?? [];
+  const mlCount = product.ratingCount != null && product.ratingCount > 0 ? product.ratingCount : 0;
+  const nativeAvg =
+    product.reviews.length > 0
+      ? product.reviews.reduce((sum, r) => sum + r.rating, 0) / product.reviews.length
+      : 0;
+  const avgRating =
+    mlCount > 0 && product.ratingAverage != null ? Number(product.ratingAverage) : nativeAvg;
+  const ratingLabelCount = mlCount > 0 ? mlCount : product.reviews.length;
+  const showRating = ratingLabelCount > 0 && avgRating > 0;
+  const tabReviewCount = mlReviews.length + product.reviews.length;
+
   const reviewDateFormatter = useMemo(() => new Intl.DateTimeFormat('es-CL', { timeZone: 'UTC' }), []);
+
+  const displayDescription =
+    product.description?.trim() || product.descriptionMl?.trim() || '';
 
   useEffect(() => setHydrated(true), []);
   useEffect(() => setQuantity((q) => Math.min(Math.max(1, q), Math.max(1, maxQuantity))), [selectedVariant, maxQuantity]);
@@ -140,7 +167,21 @@ export default function ProductDetail({ product }: { product: Product }) {
             <span className="font-sans text-xs text-charcoal-300">SKU: {variant?.sku || product.sku}</span>
           </div>
           <h1 className="font-display text-3xl lg:text-4xl font-light text-charcoal-700 leading-tight">{product.name}</h1>
-          {product.reviews.length > 0 && <div className="flex items-center gap-2"><div className="flex">{[1,2,3,4,5].map((s) => <Star key={s} className={`w-4 h-4 ${s <= Math.round(avgRating) ? 'text-primary-400 fill-primary-400' : 'text-charcoal-200'}`} />)}</div><span className="font-sans text-sm text-charcoal-400">({product.reviews.length} reseñas)</span></div>}
+          {showRating && (
+            <div className="flex items-center gap-2">
+              <div className="flex">
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <Star
+                    key={s}
+                    className={`w-4 h-4 ${s <= Math.round(avgRating) ? 'text-primary-400 fill-primary-400' : 'text-charcoal-200'}`}
+                  />
+                ))}
+              </div>
+              <span className="font-sans text-sm text-charcoal-400">
+                {avgRating.toFixed(1)} ({ratingLabelCount} calificaciones)
+              </span>
+            </div>
+          )}
 
           <div className="flex items-baseline gap-4">
             <span className="font-sans font-bold text-4xl text-charcoal-700">{formatCLP(price)}</span>
@@ -178,11 +219,116 @@ export default function ProductDetail({ product }: { product: Product }) {
       </div>
 
       <div className="mt-16">
-        <div className="flex border-b border-champagne-200">{(['description', 'attributes', 'reviews'] as const).map((tab) => <button key={tab} onClick={() => setActiveTab(tab)} className={`px-6 py-3 font-sans text-sm font-semibold transition-colors relative ${activeTab === tab ? 'text-primary-600' : 'text-charcoal-400 hover:text-charcoal-600'}`}>{tab === 'description' ? 'Descripción' : tab === 'attributes' ? 'Ficha técnica' : `Reseñas (${product.reviews.length})`}{activeTab === tab && <motion.div layoutId="tab-indicator" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />}</button>)}</div>
+        <div className="flex border-b border-champagne-200">
+          {(['description', 'attributes', 'reviews'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-6 py-3 font-sans text-sm font-semibold transition-colors relative ${activeTab === tab ? 'text-primary-600' : 'text-charcoal-400 hover:text-charcoal-600'}`}
+            >
+              {tab === 'description' ? 'Descripción' : tab === 'attributes' ? 'Ficha técnica' : `Reseñas (${tabReviewCount})`}
+              {activeTab === tab && <motion.div layoutId="tab-indicator" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />}
+            </button>
+          ))}
+        </div>
         <div className="py-8">
-          {activeTab === 'description' && <div className="prose max-w-none font-sans text-charcoal-600 leading-relaxed whitespace-pre-wrap">{product.description || 'Sin descripción disponible.'}</div>}
-          {activeTab === 'attributes' && <div className="max-w-2xl">{product.attributes.length > 0 ? <table className="w-full"><tbody>{product.attributes.map((attr, i) => <tr key={attr.id} className={i % 2 === 0 ? 'bg-champagne-50' : ''}><td className="py-3 px-4 font-sans text-sm font-semibold text-charcoal-600 w-1/3 rounded-l-xl">{attr.name}</td><td className="py-3 px-4 font-sans text-sm text-charcoal-500 rounded-r-xl">{attr.value}</td></tr>)}</tbody></table> : <p className="font-sans text-charcoal-400">Sin especificaciones técnicas.</p>}</div>}
-          {activeTab === 'reviews' && <div className="space-y-6">{product.reviews.length > 0 ? product.reviews.map((review) => <div key={review.id} className="border-b border-champagne-200 pb-6"><div className="flex items-center gap-2 mb-2"><div className="flex">{[1,2,3,4,5].map((s) => <Star key={s} className={`w-3.5 h-3.5 ${s <= review.rating ? 'text-primary-400 fill-primary-400' : 'text-charcoal-200'}`} />)}</div><span className="font-sans text-xs text-charcoal-400">{review.user?.name || 'Cliente'} · {reviewDateFormatter.format(new Date(review.createdAt))}</span></div>{review.title && <h4 className="font-sans font-semibold text-charcoal-700">{review.title}</h4>}{review.body && <p className="font-sans text-sm text-charcoal-500 mt-1">{review.body}</p>}</div>) : <p className="font-sans text-charcoal-400">Aún no hay reseñas.</p>}</div>}
+          {activeTab === 'description' && (
+            <div className="prose max-w-none font-sans text-charcoal-600 leading-relaxed whitespace-pre-wrap">
+              {displayDescription || 'Sin descripción disponible.'}
+            </div>
+          )}
+          {activeTab === 'attributes' && (
+            <div className="max-w-2xl">
+              {product.attributes.length > 0 ? (
+                <table className="w-full">
+                  <tbody>
+                    {product.attributes.map((attr, i) => (
+                      <tr key={attr.id} className={i % 2 === 0 ? 'bg-champagne-50' : ''}>
+                        <td className="py-3 px-4 font-sans text-sm font-semibold text-charcoal-600 w-1/3 rounded-l-xl">{attr.name}</td>
+                        <td className="py-3 px-4 font-sans text-sm text-charcoal-500 rounded-r-xl">{attr.value}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="font-sans text-charcoal-400">Sin especificaciones técnicas.</p>
+              )}
+            </div>
+          )}
+          {activeTab === 'reviews' && (
+            <div className="space-y-8 max-w-3xl">
+              {/* Solo mostrar resumen de calificación si hay opiniones o reseñas nativas para acompañar */}
+              {showRating && (mlReviews.length > 0 || product.reviews.length > 0) && (
+                <p className="font-sans text-sm text-charcoal-500">
+                  Calificación promedio: <strong>{avgRating.toFixed(1)}</strong> ({ratingLabelCount} calificaciones)
+                </p>
+              )}
+
+              {mlReviews.length > 0 && (
+                <div className="space-y-6">
+                  {mlReviews.map((review) => (
+                    <div key={review.id} className="border-b border-champagne-200 pb-6">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="flex">
+                          {[1, 2, 3, 4, 5].map((s) => (
+                            <Star
+                              key={s}
+                              className={`w-3.5 h-3.5 ${s <= review.rating ? 'text-primary-400 fill-primary-400' : 'text-charcoal-200'}`}
+                            />
+                          ))}
+                        </div>
+                        <span className="font-sans text-xs text-charcoal-400">
+                          {review.authorName || 'Comprador'}
+                          {review.reviewedAt
+                            ? ` · ${reviewDateFormatter.format(new Date(review.reviewedAt))}`
+                            : ''}
+                        </span>
+                      </div>
+                      {review.title && (
+                        <h4 className="font-sans font-semibold text-charcoal-700">{review.title}</h4>
+                      )}
+                      {review.content && (
+                        <p className="font-sans text-sm text-charcoal-500 mt-1 whitespace-pre-wrap">{review.content}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {product.reviews.length > 0 && (
+                <div className="space-y-6">
+                  {product.reviews.map((review) => (
+                    <div key={review.id} className="border-b border-champagne-200 pb-6">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="flex">
+                          {[1, 2, 3, 4, 5].map((s) => (
+                            <Star
+                              key={s}
+                              className={`w-3.5 h-3.5 ${s <= review.rating ? 'text-primary-400 fill-primary-400' : 'text-charcoal-200'}`}
+                            />
+                          ))}
+                        </div>
+                        <span className="font-sans text-xs text-charcoal-400">
+                          {review.user?.name || 'Cliente'} · {reviewDateFormatter.format(new Date(review.createdAt))}
+                        </span>
+                      </div>
+                      {review.title && <h4 className="font-sans font-semibold text-charcoal-700">{review.title}</h4>}
+                      {review.body && <p className="font-sans text-sm text-charcoal-500 mt-1">{review.body}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Sin mensajes técnicos: si solo hay rating agregado sin textos, mostrar solo estrellas arriba; aquí mensaje neutro */}
+              {mlReviews.length === 0 && product.reviews.length === 0 && (
+                <p className="font-sans text-charcoal-400">
+                  {showRating
+                    ? 'Todavía no hay opiniones escritas para este producto.'
+                    : 'Aún no hay reseñas para este producto.'}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

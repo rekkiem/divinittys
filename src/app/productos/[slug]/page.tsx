@@ -1,5 +1,3 @@
-import { Suspense } from 'react';
-import { unstable_cache } from 'next/cache';
 import { notFound } from 'next/navigation';
 import { Metadata } from 'next';
 import { prisma } from '@/lib/prisma';
@@ -41,12 +39,15 @@ export default async function ProductPage({ params }: { params: { slug: string }
         orderBy: { createdAt: 'desc' },
         take: 10,
       },
+      mlReviews: {
+        orderBy: [{ reviewedAt: 'desc' }, { createdAt: 'desc' }],
+        take: 20,
+      },
     },
   });
 
   if (!product) notFound();
 
-  // Related products
   const related = await prisma.product.findMany({
     where: {
       isActive: true,
@@ -61,14 +62,19 @@ export default async function ProductPage({ params }: { params: { slug: string }
     },
   });
 
-  const normalizedProduct = normalizeProductMedia(product);
+  const productWithDesc = {
+    ...product,
+    description: product.description?.trim() || product.descriptionMl || null,
+  };
+
+  const normalizedProduct = normalizeProductMedia(productWithDesc);
   const normalizedRelated = normalizeProductsMedia(related);
 
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
       <main>
-        <ProductDetail product={normalizedProduct} />
+        <ProductDetail product={normalizedProduct as any} />
 
         {normalizedRelated.length > 0 && (
           <div className="border-t border-champagne-200 mt-16 pt-4">

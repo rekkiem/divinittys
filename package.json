@@ -33,6 +33,7 @@
     "migrate:ml-variants": "npx tsx scripts/migrate-ml-variants.ts",
     "migrate:ml-variants:dry": "npx tsx scripts/migrate-ml-variants.ts --dry-run",
     "sync:ml-stock": "npx tsx scripts/sync-ml-stock.ts",
+    "sync:ml-enrich": "npx tsx scripts/sync-ml-enrichment.ts",
     "migrate:images": "npx tsx scripts/migrateImages.ts",
     "minio:setup": "npx tsx scripts/setupMinio.ts",
     "fix:deploy": "npx tsx scripts/fixDeploy.ts"
