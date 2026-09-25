@@ -1,6 +1,7 @@
 import dynamicImport from 'next/dynamic';
 import { Suspense } from 'react';
 import { unstable_cache } from 'next/cache';
+import { Metadata } from 'next';
 import { prisma } from '@/lib/prisma';
 import { normalizeProductsMedia } from '@/lib/images';
 import HeroSection from '@/components/shop/HeroSection';
@@ -12,9 +13,13 @@ import OffersBanner from '@/components/shop/OffersBanner';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata = {
-  title: 'DIVINITTYS | Productos de Belleza Profesional',
-  description: 'Encuentra los mejores productos de belleza profesional: shampoos, tinturas, tratamientos y más. Envío gratis sobre $50.000.',
+export const metadata: Metadata = {
+  // absolute evita el template "%s | DIVINITTYS" del layout (no duplicar marca)
+  title: {
+    absolute: 'DIVINITTYS | Productos de Belleza Profesional',
+  },
+  description:
+    'Encuentra los mejores productos de belleza profesional: shampoos, tinturas, tratamientos y más. Envío gratis sobre $50.000.',
   keywords: ['belleza', 'peluquería', 'shampoo', 'tintura', 'Davines', 'Elgon', 'Chile'],
   openGraph: {
     title: 'DIVINITTYS | Productos de Belleza Profesional',
