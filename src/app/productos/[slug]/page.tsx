@@ -7,6 +7,8 @@ import Footer from '@/components/layout/Footer';
 import ProductDetail from '@/components/shop/ProductDetail';
 import FeaturedProducts from '@/components/shop/FeaturedProducts';
 
+const siteUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://divinittys.cl').replace(/\/$/, '');
+
 export async function generateMetadata({
   params,
 }: {
@@ -14,12 +16,66 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const product = await prisma.product.findUnique({
     where: { slug: params.slug },
-    select: { name: true, shortDescription: true },
+    select: {
+      name: true,
+      shortDescription: true,
+      description: true,
+      descriptionMl: true,
+      slug: true,
+      basePrice: true,
+      isActive: true,
+      images: { where: { isMain: true }, take: 1, select: { url: true, alt: true } },
+      brand: { select: { name: true } },
+    },
   });
-  if (!product) return { title: 'Producto no encontrado' };
+
+  if (!product) {
+    return { title: 'Producto no encontrado', robots: { index: false, follow: false } };
+  }
+
+  // Solo el nombre: el template del layout añade " | DIVINITTYS"
+  const title = product.name;
+  const description =
+    product.shortDescription ||
+    product.description?.slice(0, 160) ||
+    product.descriptionMl?.slice(0, 160) ||
+    `${product.name}${product.brand?.name ? ` — ${product.brand.name}` : ''} | Belleza profesional en DIVINITTYS`;
+
+  const canonical = `${siteUrl}/productos/${product.slug}`;
+  const imageUrl = product.images[0]?.url;
+
   return {
-    title: `${product.name} | DIVINITTYS`,
-    description: product.shortDescription || undefined,
+    title,
+    description,
+    alternates: { canonical },
+    openGraph: {
+      type: 'website',
+      locale: 'es_CL',
+      url: canonical,
+      title: `${product.name} | DIVINITTYS`,
+      description,
+      siteName: 'DIVINITTYS',
+      ...(imageUrl
+        ? {
+            images: [
+              {
+                url: imageUrl,
+                alt: product.images[0]?.alt || product.name,
+              },
+            ],
+          }
+        : {}),
+    },
+    twitter: {
+      card: imageUrl ? 'summary_large_image' : 'summary',
+      title: `${product.name} | DIVINITTYS`,
+      description,
+      ...(imageUrl ? { images: [imageUrl] } : {}),
+    },
+    // Productos inactivos no deben indexarse (por si se llega por URL antigua)
+    robots: product.isActive
+      ? { index: true, follow: true }
+      : { index: false, follow: false },
   };
 }
 
