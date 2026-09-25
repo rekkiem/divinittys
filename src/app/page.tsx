@@ -29,7 +29,7 @@ const BrandsCarousel = dynamicImport(() => import('@/components/shop/BrandsCarou
 
 const getHomeData = unstable_cache(
   async () => {
-    const [featuredProducts, categories, brands, onSaleProducts] = await Promise.all([
+    const [featuredProducts, categories, brands, onSaleProducts, activeProductCount] = await Promise.all([
       prisma.product.findMany({
         where: { isActive: true, isFeatured: true },
         include: {
@@ -60,6 +60,7 @@ const getHomeData = unstable_cache(
         take: 4,
         orderBy: { updatedAt: 'desc' },
       }),
+      prisma.product.count({ where: { isActive: true } }),
     ]);
 
     return {
@@ -67,6 +68,7 @@ const getHomeData = unstable_cache(
       categories,
       brands,
       onSaleProducts: normalizeProductsMedia(onSaleProducts),
+      activeProductCount,
     };
   },
   ['home-data'],
@@ -74,14 +76,14 @@ const getHomeData = unstable_cache(
 );
 
 export default async function HomePage() {
-  const { featuredProducts, categories, brands, onSaleProducts } = await getHomeData();
+  const { featuredProducts, categories, brands, onSaleProducts, activeProductCount } = await getHomeData();
 
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
 
       <main>
-        <HeroSection />
+        <HeroSection activeProductCount={activeProductCount} />
 
         <FeaturedCategories categories={categories} />
 
