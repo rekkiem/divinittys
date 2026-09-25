@@ -12,6 +12,8 @@
  *   npx tsx scripts/import-ml-products.ts --file=./Publicaciones.xlsx
  *   npx tsx scripts/import-ml-products.ts --file=./Publicaciones.xlsx --dry-run
  *   npx tsx scripts/import-ml-products.ts --file=./Publicaciones.xlsx --category=coloracion
+ *
+ * Fase 0.5: allowlist de categoría + keywords de rechazo fuera de rubro.
  */
 
 import * as XLSX from 'xlsx';
@@ -66,7 +68,6 @@ function extractBrand(title: string): string {
   const parts = title.split(' - ');
   if (parts.length >= 2) {
     const lastPart = parts[parts.length - 1].trim();
-    // Clean brand: remove size info like "300ml"
     const cleaned = lastPart.replace(/\d+ml|\d+g|\d+L/gi, '').trim();
     if (cleaned.length > 1 && cleaned.length < 30) return cleaned;
   }
@@ -97,6 +98,34 @@ function detectCategory(title: string): string {
   return 'Cuidado Capilar';
 }
 
+/** Solo estas categorías de belleza/capilar se aceptan en el catálogo. */
+const ALLOWED_CATEGORIES = new Set([
+  'Coloración',
+  'Shampoo',
+  'Acondicionador',
+  'Tratamientos',
+  'Keratina',
+  'Styling',
+  'Oxidantes',
+  'Herramientas',
+  'Cuidado Capilar',
+]);
+
+/** Keywords que marcan el producto como fuera de rubro (rechazo duro). */
+const REJECT_KEYWORDS = [
+  'libro', 'montessori', 'bebe', 'bebé', 'sensorial', 'juguete',
+  'collar', 'cadena', 'plata 925', 'acero quirurgico', 'acero quirúrgico',
+  'anillo', 'pulsera', 'bijou', 'bisuteria', 'bisutería',
+  'producto-prueba', 'producto prueba', 'prueba',
+];
+
+function isOutOfCategory(title: string, category: string): boolean {
+  const t = title.toLowerCase();
+  if (REJECT_KEYWORDS.some((kw) => t.includes(kw))) return true;
+  if (!ALLOWED_CATEGORIES.has(category)) return true;
+  return false;
+}
+
 // ── Slug generation ───────────────────────────────────────────────
 function toSlug(text: string): string {
   return text
@@ -109,7 +138,6 @@ function toSlug(text: string): string {
     .substring(0, 100);
 }
 
-// ── Clean product name (remove brand suffix) ──────────────────────
 function cleanName(title: string, brand: string): string {
   let name = title.trim();
   if (name.endsWith(` - ${brand}`)) {
@@ -118,7 +146,6 @@ function cleanName(title: string, brand: string): string {
   return name;
 }
 
-// ── Parse Excel ───────────────────────────────────────────────────
 function parseExcel(filePath: string): ParsedProduct[] {
   if (!fs.existsSync(filePath)) {
     throw new Error(`File not found: ${filePath}`);
@@ -133,7 +160,7 @@ function parseExcel(filePath: string): ParsedProduct[] {
              'QUANTITY','PRICE','CURRENCY_ID','TP_P1','TP_Q1','TP_P2','TP_Q2','TP_P3',
              'TP_Q3','TP_P4','TP_Q4','TP_P5','TP_Q5','CONDITION','SHIPPING','LISTING_TYPE',
              'FEE','STATUS'],
-    range: 5,  // Start after header rows
+    range: 5,
     defval: '',
   });
 
@@ -144,7 +171,6 @@ function parseExcel(filePath: string): ParsedProduct[] {
     const itemId = String(row.ITEM_ID || '').trim();
     if (!itemId.startsWith('MLC')) continue;
 
-    // Skip formula cells (data_only mode doesn't always work)
     const titleRaw = String(row.TITLE || '').trim();
     const isFormulaRow = titleRaw.startsWith('=');
 
@@ -158,7 +184,6 @@ function parseExcel(filePath: string): ParsedProduct[] {
     const hasVariation = variation && variation !== '-' && variation !== '0';
 
     if (!isFormulaRow && titleRaw) {
-      // This is the parent row
       const brand    = extractBrand(titleRaw);
       const name     = cleanName(titleRaw, brand);
       const category = detectCategory(titleRaw);
@@ -171,7 +196,6 @@ function parseExcel(filePath: string): ParsedProduct[] {
         name, slug, sku, category,
       });
     } else if (isFormulaRow && hasVariation) {
-      // Variation row
       const parent = productMap.get(itemId);
       if (parent) {
         parent.variations.push({ name: variation, stock: qty });
@@ -188,7 +212,6 @@ function parseExcel(filePath: string): ParsedProduct[] {
   return Array.from(productMap.values()).filter(p => p.price > 0 && p.name);
 }
 
-// ── DB Helpers ────────────────────────────────────────────────────
 async function getOrCreateCategory(name: string): Promise<string> {
   const slug = toSlug(name);
   const existing = await prisma.category.findFirst({ where: { slug } });
@@ -212,7 +235,6 @@ async function getOrCreateBrand(name: string): Promise<string | null> {
   return created.id;
 }
 
-// ── Main Import ───────────────────────────────────────────────────
 async function importProducts(
   products: ParsedProduct[],
   options: { dryRun: boolean; categoryFilter?: string }
@@ -226,13 +248,16 @@ async function importProducts(
 
   console.log(`\n📦 Processing ${filtered.length} products...`);
 
-  // Pre-fetch all category and brand IDs
   const categoryCache = new Map<string, string>();
   const brandCache    = new Map<string, string | null>();
 
   if (!options.dryRun) {
-    const uniqueCategories = [...new Set(filtered.map(p => p.category))];
-    const uniqueBrands     = [...new Set(filtered.map(p => p.brand))];
+    const uniqueCategories = [...new Set(
+      filtered.filter(p => !isOutOfCategory(p.title, p.category)).map(p => p.category)
+    )];
+    const uniqueBrands = [...new Set(
+      filtered.filter(p => !isOutOfCategory(p.title, p.category)).map(p => p.brand)
+    )];
 
     for (const cat of uniqueCategories) {
       categoryCache.set(cat, await getOrCreateCategory(cat));
@@ -244,6 +269,12 @@ async function importProducts(
 
   for (const product of filtered) {
     try {
+      if (isOutOfCategory(product.title, product.category)) {
+        console.log(`  ⛔ RECHAZADO (fuera de rubro): ${product.sku} | ${product.name} | cat=${product.category}`);
+        result.skipped++;
+        continue;
+      }
+
       if (options.dryRun) {
         console.log(`  [DRY RUN] ${product.sku} | ${product.name} | $${product.price} | ${product.category}`);
         result.created++;
@@ -253,14 +284,12 @@ async function importProducts(
       const categoryId = categoryCache.get(product.category)!;
       const brandId    = brandCache.get(product.brand) ?? null;
 
-      // Check if product exists (by SKU or slug)
       const existing = await prisma.product.findFirst({
         where: { OR: [{ sku: product.sku }, { slug: product.slug }] },
         include: { inventory: true },
       });
 
       if (existing) {
-        // Update price and stock
         await prisma.product.update({
           where: { id: existing.id },
           data: {
@@ -277,7 +306,6 @@ async function importProducts(
         result.updated++;
         process.stdout.write('u');
       } else {
-        // Create new product
         const tags = [product.category.toLowerCase(), product.brand.toLowerCase()].filter(Boolean);
 
         await prisma.$transaction(async (tx) => {
@@ -319,7 +347,6 @@ async function importProducts(
   return result;
 }
 
-// ── CLI ───────────────────────────────────────────────────────────
 async function main() {
   const args = process.argv.slice(2);
   const fileArg = args.find(a => a.startsWith('--file='))?.split('=')[1];
@@ -343,16 +370,21 @@ async function main() {
     products = parseExcel(filePath);
     console.log(`   ✅ ${products.length} productos encontrados`);
 
-    // Stats
     const cats = new Map<string, number>();
     const brands = new Map<string, number>();
+    let outOfCategory = 0;
     for (const p of products) {
       cats.set(p.category, (cats.get(p.category) || 0) + 1);
       brands.set(p.brand, (brands.get(p.brand) || 0) + 1);
+      if (isOutOfCategory(p.title, p.category)) outOfCategory++;
     }
     console.log('\n   Categorías detectadas:');
     for (const [cat, count] of [...cats.entries()].sort((a, b) => b[1] - a[1])) {
-      console.log(`     ${cat}: ${count}`);
+      const allowed = ALLOWED_CATEGORIES.has(cat) ? '✓' : '⛔';
+      console.log(`     ${allowed} ${cat}: ${count}`);
+    }
+    if (outOfCategory > 0) {
+      console.log(`\n   ⛔ ${outOfCategory} productos serán RECHAZADOS (fuera de rubro)`);
     }
     console.log('\n   Top marcas:');
     for (const [brand, count] of [...brands.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8)) {
@@ -369,7 +401,7 @@ async function main() {
   console.log(`📊 Resultado de importación:`);
   console.log(`   ✅ Creados:    ${result.created}`);
   console.log(`   🔄 Actualizados: ${result.updated}`);
-  console.log(`   ⏭️  Omitidos:   ${result.skipped}`);
+  console.log(`   ⏭️  Omitidos/rechazados: ${result.skipped}`);
   console.log(`   ❌ Errores:    ${result.errors.length}`);
   console.log(`   ⏱️  Duración:   ${(result.duration / 1000).toFixed(1)}s`);
 
