@@ -2,10 +2,10 @@
  * LUNA — Asistente de belleza DIVINITTYS
  * Provider: Google Gemini (gemini-3.5-flash-lite)
  * Env: GEMINI_API_KEY  |  opcional: GEMINI_MODEL
+ * Solo recomienda productos catalogScope BEAUTY.
  */
 import { prisma } from '../prisma';
 
-// 2.5-flash-lite ya no está disponible para cuentas nuevas (404).
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
@@ -55,6 +55,7 @@ async function loadCatalogContext(userMessage: string): Promise<CatalogItem[]> {
   const products = await prisma.product.findMany({
     where: {
       isActive: true,
+      catalogScope: 'BEAUTY',
       OR:
         words.length > 0
           ? [
@@ -88,7 +89,7 @@ async function loadCatalogContext(userMessage: string): Promise<CatalogItem[]> {
   }
 
   const fallback = await prisma.product.findMany({
-    where: { isActive: true },
+    where: { isActive: true, catalogScope: 'BEAUTY' },
     select: {
       id: true,
       name: true,
@@ -293,7 +294,7 @@ export async function generateProductRecommendations(
 
   if (purchasedCategories.length === 0) {
     const featured = await prisma.product.findMany({
-      where: { isActive: true, isFeatured: true },
+      where: { isActive: true, catalogScope: 'BEAUTY', isFeatured: true },
       take: 6,
       select: { id: true },
     });
@@ -303,6 +304,7 @@ export async function generateProductRecommendations(
   const recommended = await prisma.product.findMany({
     where: {
       isActive: true,
+      catalogScope: 'BEAUTY',
       category: { name: { in: purchasedCategories } },
       NOT: { id: { in: context.viewedProductIds || [] } },
     },
