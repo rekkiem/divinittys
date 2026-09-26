@@ -14,7 +14,6 @@ import OffersBanner from '@/components/shop/OffersBanner';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  // absolute evita el template "%s | DIVINITTYS" del layout (no duplicar marca)
   title: {
     absolute: 'DIVINITTYS | Productos de Belleza Profesional',
   },
@@ -32,11 +31,14 @@ const BeautyAssistantBanner = dynamicImport(() => import('@/components/ai/Beauty
 const HairDiagnosisBanner = dynamicImport(() => import('@/components/ai/HairDiagnosisBanner'));
 const BrandsCarousel = dynamicImport(() => import('@/components/shop/BrandsCarousel'));
 
+/** Solo catálogo principal de belleza en home. */
+const beautyWhere = { isActive: true, catalogScope: 'BEAUTY' as const };
+
 const getHomeData = unstable_cache(
   async () => {
     const [featuredProducts, categories, brands, onSaleProducts, activeProductCount] = await Promise.all([
       prisma.product.findMany({
-        where: { isActive: true, isFeatured: true },
+        where: { ...beautyWhere, isFeatured: true },
         include: {
           images: { where: { isMain: true }, take: 1 },
           brand: { select: { name: true } },
@@ -47,7 +49,12 @@ const getHomeData = unstable_cache(
         orderBy: { createdAt: 'desc' },
       }),
       prisma.category.findMany({
-        where: { isActive: true, parentId: null },
+        where: {
+          isActive: true,
+          parentId: null,
+          // Excluir categorías solo-secundarias de la home
+          slug: { notIn: ['accesorios', 'infantil'] },
+        },
         orderBy: { sortOrder: 'asc' },
         take: 9,
       }),
@@ -56,7 +63,7 @@ const getHomeData = unstable_cache(
         take: 10,
       }),
       prisma.product.findMany({
-        where: { isActive: true, isOnSale: true },
+        where: { ...beautyWhere, isOnSale: true },
         include: {
           images: { where: { isMain: true }, take: 1 },
           brand: { select: { name: true } },
@@ -65,7 +72,7 @@ const getHomeData = unstable_cache(
         take: 4,
         orderBy: { updatedAt: 'desc' },
       }),
-      prisma.product.count({ where: { isActive: true } }),
+      prisma.product.count({ where: beautyWhere }),
     ]);
 
     return {
