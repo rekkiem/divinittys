@@ -29,9 +29,21 @@ export default function ProductsFilters({ categories, brands, minPrice, maxPrice
     router.push(`${pathname}?${params.toString()}`);
   };
 
-  const clearAll = () => router.push(pathname);
+  // Limpiar filtros de categoría/marca/precio pero preservar el scope (modo del catálogo)
+  const clearAll = () => {
+    const params = new URLSearchParams();
+    if (searchParams.scope) params.set('scope', searchParams.scope);
+    const qs = params.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname);
+  };
 
-  const hasFilters = !!(searchParams.category || searchParams.brand || searchParams.minPrice || searchParams.maxPrice || searchParams.onSale);
+  const hasFilters = !!(
+    searchParams.category ||
+    searchParams.brand ||
+    searchParams.minPrice ||
+    searchParams.maxPrice ||
+    searchParams.onSale
+  );
 
   return (
     <div className="sticky top-24 space-y-6">

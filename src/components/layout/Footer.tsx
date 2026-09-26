@@ -22,6 +22,8 @@ const footerLinks = {
     { label: 'Política de Envíos', href: '/envios' },
     { label: 'Devoluciones', href: '/devoluciones' },
     { label: 'Contacto', href: '/contacto' },
+    // Anexo SECONDARY: único entry point de navegación (no va en Productos ni menú)
+    { label: 'Otros productos', href: '/productos?scope=secondary' },
   ],
 };
 
