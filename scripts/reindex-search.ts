@@ -1,6 +1,6 @@
 /**
  * scripts/reindex-search.ts
- * Re-indexa todos los productos activos en Meilisearch
+ * Re-indexa productos activos en Meilisearch (incluye catalogScope).
  * Uso: npx tsx scripts/reindex-search.ts
  */
 import { PrismaClient } from '@prisma/client';
@@ -19,7 +19,6 @@ async function main() {
     process.exit(0);
   }
 
-  // Esperar a que Meilisearch esté listo (útil en Docker startup)
   let retries = 0;
   while (retries < 10) {
     try {
@@ -28,7 +27,7 @@ async function main() {
     } catch {
       retries++;
       console.log(`⏳ Esperando Meilisearch... (${retries}/10)`);
-      await new Promise(r => setTimeout(r, 3000));
+      await new Promise((r) => setTimeout(r, 3000));
     }
   }
 
@@ -63,6 +62,7 @@ async function main() {
       isActive: p.isActive,
       isFeatured: p.isFeatured,
       isOnSale: !!(p.comparePrice && Number(p.comparePrice) > Number(p.basePrice)),
+      catalogScope: p.catalogScope || 'BEAUTY',
       category: p.category?.name ?? null,
       categorySlug: p.category?.slug ?? null,
       brand: p.brand?.name ?? null,
@@ -74,7 +74,7 @@ async function main() {
     }));
 
     await reindexAll(docs);
-    console.log(`✅ ${docs.length} productos indexados en Meilisearch`);
+    console.log(`✅ ${docs.length} productos indexados (con catalogScope)`);
   } finally {
     await prisma.$disconnect();
   }
@@ -82,5 +82,5 @@ async function main() {
 
 main().catch((e) => {
   console.error('❌ Reindex error:', e);
-  process.exit(0); // exit 0 para no bloquear el startup de Docker
+  process.exit(0);
 });
