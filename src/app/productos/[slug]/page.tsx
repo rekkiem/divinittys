@@ -24,6 +24,7 @@ export async function generateMetadata({
       slug: true,
       basePrice: true,
       isActive: true,
+      catalogScope: true,
       images: { where: { isMain: true }, take: 1, select: { url: true, alt: true } },
       brand: { select: { name: true } },
     },
@@ -33,16 +34,18 @@ export async function generateMetadata({
     return { title: 'Producto no encontrado', robots: { index: false, follow: false } };
   }
 
-  // Solo el nombre: el template del layout añade " | DIVINITTYS"
   const title = product.name;
   const description =
     product.shortDescription ||
     product.description?.slice(0, 160) ||
     product.descriptionMl?.slice(0, 160) ||
-    `${product.name}${product.brand?.name ? ` — ${product.brand.name}` : ''} | Belleza profesional en DIVINITTYS`;
+    `${product.name}${product.brand?.name ? ` — ${product.brand.name}` : ''} | DIVINITTYS`;
 
   const canonical = `${siteUrl}/productos/${product.slug}`;
   const imageUrl = product.images[0]?.url;
+
+  // SECONDARY o inactivo: noindex (vendible por link, no compite en SEO de belleza)
+  const indexable = product.isActive && product.catalogScope === 'BEAUTY';
 
   return {
     title,
@@ -72,10 +75,9 @@ export async function generateMetadata({
       description,
       ...(imageUrl ? { images: [imageUrl] } : {}),
     },
-    // Productos inactivos no deben indexarse (por si se llega por URL antigua)
-    robots: product.isActive
+    robots: indexable
       ? { index: true, follow: true }
-      : { index: false, follow: false },
+      : { index: false, follow: true },
   };
 }
 
@@ -107,6 +109,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
   const related = await prisma.product.findMany({
     where: {
       isActive: true,
+      catalogScope: 'BEAUTY',
       categoryId: product.categoryId,
       id: { not: product.id },
     },
