@@ -29,6 +29,8 @@ export type MeiliProduct = {
   isActive: boolean;
   isFeatured: boolean;
   isOnSale: boolean;
+  /** BEAUTY | SECONDARY — filtro vitrina principal */
+  catalogScope: string;
   category: string | null;
   categorySlug: string | null;
   brand: string | null;
@@ -54,6 +56,7 @@ export async function setupMeiliIndex(): Promise<void> {
         'isActive',
         'isFeatured',
         'isOnSale',
+        'catalogScope',
         'basePrice',
         'stock',
       ],
@@ -95,6 +98,8 @@ export type SearchProductsParams = {
   minPrice?: number;
   maxPrice?: number;
   onSale?: boolean;
+  /** Por defecto solo BEAUTY (vitrina principal). */
+  catalogScope?: 'BEAUTY' | 'SECONDARY' | 'ALL';
   sort?: 'price_asc' | 'price_desc' | 'newest' | 'name_asc' | string;
 };
 
@@ -115,10 +120,14 @@ export async function searchProducts(params: SearchProductsParams): Promise<{
     minPrice,
     maxPrice,
     onSale,
+    catalogScope = 'BEAUTY',
     sort,
   } = params;
 
   const filters: string[] = ['isActive = true'];
+  if (catalogScope !== 'ALL') {
+    filters.push(`catalogScope = "${catalogScope}"`);
+  }
   if (category) filters.push(`categorySlug = "${category.replace(/"/g, '')}"`);
   if (brand) filters.push(`brandSlug = "${brand.replace(/"/g, '')}"`);
   if (minPrice !== undefined && !Number.isNaN(minPrice)) {
@@ -139,7 +148,6 @@ export async function searchProducts(params: SearchProductsParams): Promise<{
   const offset = (Math.max(1, page) - 1) * limit;
 
   try {
-    // offset/limit es más compatible que page/hitsPerPage entre versiones Meili
     const result = await client.index(PRODUCTS_INDEX).search(q || '', {
       offset,
       limit,
