@@ -1,6 +1,6 @@
 /**
  * ProductsGrid — Server Component
- * Usa Prisma. La búsqueda con `q` también filtra por marca (nombre).
+ * Default: catalogScope BEAUTY. Anexo: ?scope=secondary
  */
 import { prisma } from '@/lib/prisma';
 import ProductCard from './ProductCard';
@@ -12,7 +12,8 @@ const PAGE_SIZE = 24;
 type SearchParams = { [key: string]: string | undefined };
 
 function buildWhere(searchParams: SearchParams): any {
-  const where: any = { isActive: true };
+  const scope = searchParams.scope === 'secondary' ? 'SECONDARY' : 'BEAUTY';
+  const where: any = { isActive: true, catalogScope: scope };
 
   if (searchParams.q) {
     const q = searchParams.q.trim();
@@ -86,7 +87,6 @@ export default async function ProductsGrid({
     total = count;
   } catch (err) {
     console.error('[ProductsGrid] query failed', err);
-    // Evita tumbar la página con error.tsx genérico
     return (
       <div className="text-center py-20">
         <p className="font-display text-4xl font-light text-charcoal-300 mb-4">
