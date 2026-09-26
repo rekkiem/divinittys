@@ -39,6 +39,7 @@ export function startSearchWorker() {
         isActive: product.isActive,
         isFeatured: product.isFeatured,
         isOnSale: product.isOnSale,
+        catalogScope: product.catalogScope ?? 'BEAUTY',
         category: product.category?.name ?? null,
         categorySlug: product.category?.slug ?? null,
         brand: product.brand?.name ?? null,

@@ -19,7 +19,8 @@ describe('Meilisearch Search Engine', () => {
     await expect(indexProduct({
       id: 'test', name: 'Test', slug: 'test', description: null,
       sku: 'TST', basePrice: 100, comparePrice: null, isActive: true,
-      isFeatured: false, isOnSale: false, category: 'Test', categorySlug: 'test',
+      isFeatured: false, isOnSale: false, catalogScope: 'BEAUTY',
+      category: 'Test', categorySlug: 'test',
       brand: null, brandSlug: null, tags: [], imageUrl: null, stock: 5, createdAt: Date.now(),
     })).resolves.not.toThrow();
   });
