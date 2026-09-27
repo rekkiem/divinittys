@@ -28,7 +28,12 @@ const slides = [
   },
 ];
 
-export default function HeroSection() {
+type HeroSectionProps = {
+  /** Cantidad real de productos isActive en catálogo (desde page.tsx). */
+  activeProductCount?: number;
+};
+
+export default function HeroSection({ activeProductCount }: HeroSectionProps) {
   const [current, setCurrent] = useState(0);
 
   useEffect(() => {
@@ -39,6 +44,11 @@ export default function HeroSection() {
   }, []);
 
   const slide = slides[current];
+
+  const countLabel =
+    typeof activeProductCount === 'number' && activeProductCount > 0
+      ? `+${activeProductCount.toLocaleString('es-CL')} productos disponibles`
+      : 'Productos de belleza profesional';
 
   return (
     <section className={`relative min-h-[85vh] lg:min-h-screen flex items-center overflow-hidden bg-gradient-to-br ${slide.bg} transition-all duration-1000`}>
@@ -146,7 +156,7 @@ export default function HeroSection() {
               </Link>
             </motion.div>
 
-            {/* Social proof */}
+            {/* Social proof — contador real de productos activos */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -161,7 +171,7 @@ export default function HeroSection() {
               </div>
               <div className="h-4 w-px bg-border" />
               <span className="font-sans text-sm text-charcoal-500">
-                +2.000 productos disponibles
+                {countLabel}
               </span>
             </motion.div>
           </div>
@@ -173,11 +183,9 @@ export default function HeroSection() {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.8 }}
           >
-            {/* Decorative circles */}
             <div className="absolute w-[500px] h-[500px] rounded-full border border-primary-200/50" />
             <div className="absolute w-[380px] h-[380px] rounded-full border border-primary-300/30 animate-[spin_20s_linear_infinite]" />
 
-            {/* Center piece */}
             <div className="relative z-10 w-64 h-64 rounded-full bg-gradient-to-br from-primary-300 to-rose-300 shadow-2xl shadow-primary-300/40 flex items-center justify-center">
               <div className="text-center text-white">
                 <Sparkles className="w-16 h-16 mx-auto mb-3 animate-float" />
@@ -186,7 +194,6 @@ export default function HeroSection() {
               </div>
             </div>
 
-            {/* Floating product cards */}
             {[
               { label: 'Wella', sub: 'Coloración', top: '5%', right: '0%' },
               { label: 'Kerastase', sub: 'Tratamientos', bottom: '15%', left: '0%' },
@@ -207,7 +214,6 @@ export default function HeroSection() {
         </div>
       </div>
 
-      {/* Slide indicators */}
       <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-2">
         {slides.map((_, i) => (
           <button

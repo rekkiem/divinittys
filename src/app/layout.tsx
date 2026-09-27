@@ -3,30 +3,41 @@ import { Toaster } from 'react-hot-toast';
 import Providers from '@/components/layout/Providers';
 import './globals.css';
 
+const siteUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://divinittys.cl';
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: {
-    // Nombre de marca alineado con Google OAuth Brand (DIVINITTYS)
-    default: 'DIVINITTYS',
+    // Template añade " | DIVINITTYS" — las páginas hijas NO deben repetir la marca
+    default: 'DIVINITTYS | Productos de Belleza Profesional',
     template: '%s | DIVINITTYS',
   },
   description:
-    'DIVINITTYS — Tienda de belleza profesional en Chile. Inicia sesión para gestionar pedidos, historial de compras, lista de deseos y tu perfil.',
-  keywords: ['DIVINITTYS', 'belleza', 'productos capilares', 'coloración', 'keratina', 'tratamientos', 'Chile'],
+    'DIVINITTYS — Tienda de belleza profesional en Chile. Shampoos, tinturas, tratamientos y las mejores marcas (Davines, Elgon, Wella, Kerastase). Envío gratis sobre $50.000.',
+  keywords: ['DIVINITTYS', 'belleza', 'productos capilares', 'coloración', 'keratina', 'tratamientos', 'Davines', 'Elgon', 'Chile'],
   authors: [{ name: 'DIVINITTYS' }],
   creator: 'DIVINITTYS',
   openGraph: {
     type: 'website',
     locale: 'es_CL',
-    url: process.env.NEXT_PUBLIC_APP_URL,
-    title: 'DIVINITTYS',
+    url: siteUrl,
+    title: 'DIVINITTYS | Productos de Belleza Profesional',
     description:
-      'Inicia sesión en DIVINITTYS para gestionar tus pedidos, historial de compras y productos favoritos.',
+      'Tu tienda online de belleza profesional en Chile. Marcas premium, envío a todo el país.',
     siteName: 'DIVINITTYS',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'DIVINITTYS | Productos de Belleza Profesional',
+    description: 'Tu tienda online de belleza profesional en Chile.',
   },
   robots: {
     index: true,
     follow: true,
     googleBot: { index: true, follow: true, 'max-video-preview': -1, 'max-image-preview': 'large' },
+  },
+  alternates: {
+    canonical: siteUrl,
   },
 };
 

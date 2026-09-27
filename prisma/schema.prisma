@@ -110,6 +110,13 @@ model Address {
 // CATALOG
 // ============================================
 
+/// Ámbito de vitrina: BEAUTY = catálogo principal (home/sitemap/Meili/LUNA).
+/// SECONDARY = sección anexa (accesorios, infantil, etc.), vendible por link.
+enum CatalogScope {
+  BEAUTY
+  SECONDARY
+}
+
 model Category {
   id          String     @id @default(cuid())
   name        String     @unique
@@ -158,6 +165,8 @@ model Product {
   isActive        Boolean          @default(true)
   isFeatured      Boolean          @default(false)
   isOnSale        Boolean          @default(false)
+  /// Vitrina principal vs anexa (multivendor / otros rubros ML).
+  catalogScope    CatalogScope     @default(BEAUTY)
   tags            String[]
   mlCatalogProductId String?
   duplicateOfId   String?
@@ -193,6 +202,8 @@ model Product {
   @@index([categoryId])
   @@index([brandId])
   @@index([isActive, isFeatured])
+  @@index([catalogScope])
+  @@index([isActive, catalogScope])
   @@index([mlCatalogProductId])
   @@index([duplicateOfId])
   @@map("products")
