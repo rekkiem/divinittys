@@ -1,8 +1,9 @@
 import InfoPage from '@/components/layout/InfoPage';
 
 export const metadata = {
-  title: 'Sobre Nosotros | DIVINITTYS',
-  description: 'Conoce DIVINITTYS, tu tienda de belleza profesional en Chile.',
+  title: 'Sobre Nosotros',
+  description:
+    'Conoce DIVINITTYS: misión y visión de belleza profesional accesible en Chile. Las mejores marcas, envíos a todo el país.',
 };
 
 export default function AboutPage() {
@@ -23,6 +24,18 @@ export default function AboutPage() {
       <p>
         Envíos a todo Chile, pagos seguros con Webpay y MercadoPago, y un equipo disponible para
         resolver dudas de compra y postventa.
+      </p>
+
+      <h2 className="font-display text-2xl font-light text-charcoal-700 pt-4">Visión</h2>
+      <p>
+        Soñamos con un futuro donde el cuidado personal sea accesible para todos, y donde
+        Divinittys sea el puente entre lo profesional y lo cotidiano.
+      </p>
+
+      <h2 className="font-display text-2xl font-light text-charcoal-700 pt-2">Misión</h2>
+      <p>
+        Creemos que la belleza profesional no debería ser un privilegio de pocos. Existimos para
+        poner en tus manos las mejores marcas del mundo. Porque sentirse bien, no es solo Belleza.
       </p>
     </InfoPage>
   );
