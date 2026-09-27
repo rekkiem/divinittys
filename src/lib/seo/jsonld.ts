@@ -17,11 +17,17 @@ export function absoluteUrl(pathOrUrl: string | null | undefined): string | unde
   return `${base}${pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`}`;
 }
 
+/** Descripción pública de marca (misión + visión) para Organization JSON-LD. */
+export const ORG_DESCRIPTION =
+  'Creemos que la belleza profesional no debería ser un privilegio de pocos. Existimos para poner en tus manos las mejores marcas del mundo. Porque sentirse bien, no es solo Belleza. Soñamos con un futuro donde el cuidado personal sea accesible para todos, y donde Divinittys sea el puente entre lo profesional y lo cotidiano.';
+
 export type OrganizationJsonLd = {
   '@context': 'https://schema.org';
   '@type': 'Organization';
   name: string;
   url: string;
+  description?: string;
+  slogan?: string;
   logo?: string;
   sameAs?: string[];
   contactPoint?: {
@@ -41,6 +47,8 @@ export function buildOrganizationJsonLd(): OrganizationJsonLd {
     '@type': 'Organization',
     name: 'DIVINITTYS',
     url,
+    description: ORG_DESCRIPTION,
+    slogan: 'Porque sentirse bien, no es solo Belleza.',
     sameAs: [
       'https://www.instagram.com/divinitty4/',
       'https://www.facebook.com/divinittys/',
