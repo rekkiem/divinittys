@@ -6,6 +6,11 @@ import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import ProductDetail from '@/components/shop/ProductDetail';
 import FeaturedProducts from '@/components/shop/FeaturedProducts';
+import JsonLd from '@/components/seo/JsonLd';
+import {
+  buildProductJsonLd,
+  buildBreadcrumbJsonLd,
+} from '@/lib/seo/jsonld';
 
 const siteUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://divinittys.cl').replace(/\/$/, '');
 
@@ -129,8 +134,59 @@ export default async function ProductPage({ params }: { params: { slug: string }
   const normalizedProduct = normalizeProductMedia(productWithDesc);
   const normalizedRelated = normalizeProductsMedia(related);
 
+  // JSON-LD Product + Breadcrumb (rich results). Emitimos también en SECONDARY
+  // (noindex); Google ignora noindex para ranking pero el markup no rompe.
+  const imageUrls = (normalizedProduct.images || [])
+    .map((img: { url?: string }) => img.url)
+    .filter(Boolean) as string[];
+  if (!imageUrls.length && normalizedProduct.imageUrl) {
+    imageUrls.push(normalizedProduct.imageUrl);
+  }
+
+  const inStock =
+    normalizedProduct.inventory == null ||
+    (typeof normalizedProduct.inventory.stock === 'number'
+      ? normalizedProduct.inventory.stock > 0
+      : true);
+
+  const productLd = buildProductJsonLd({
+    name: normalizedProduct.name,
+    slug: normalizedProduct.slug,
+    description: normalizedProduct.description,
+    sku: normalizedProduct.sku,
+    basePrice: Number(normalizedProduct.basePrice),
+    comparePrice:
+      normalizedProduct.comparePrice != null
+        ? Number(normalizedProduct.comparePrice)
+        : null,
+    imageUrls,
+    brandName: normalizedProduct.brand?.name ?? null,
+    categoryName: normalizedProduct.category?.name ?? null,
+    inStock,
+    ratingAverage: normalizedProduct.ratingAverage ?? null,
+    ratingCount: normalizedProduct.ratingCount ?? null,
+  });
+
+  const breadcrumbItems = [
+    { name: 'Inicio', path: '/' },
+    { name: 'Catálogo', path: '/productos' },
+  ];
+  if (normalizedProduct.category?.slug && normalizedProduct.category?.name) {
+    breadcrumbItems.push({
+      name: normalizedProduct.category.name,
+      path: `/productos?category=${normalizedProduct.category.slug}`,
+    });
+  }
+  breadcrumbItems.push({
+    name: normalizedProduct.name,
+    path: `/productos/${normalizedProduct.slug}`,
+  });
+  const breadcrumbLd = buildBreadcrumbJsonLd(breadcrumbItems);
+
   return (
     <div className="min-h-screen bg-background">
+      <JsonLd data={productLd} />
+      <JsonLd data={breadcrumbLd} />
       <Navbar />
       <main>
         <ProductDetail product={normalizedProduct as any} />

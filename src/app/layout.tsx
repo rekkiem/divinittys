@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import { Toaster } from 'react-hot-toast';
 import Providers from '@/components/layout/Providers';
+import JsonLd from '@/components/seo/JsonLd';
+import { buildOrganizationJsonLd, buildWebSiteJsonLd } from '@/lib/seo/jsonld';
 import './globals.css';
 
 const siteUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://divinittys.cl';
@@ -48,9 +50,14 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const organizationLd = buildOrganizationJsonLd();
+  const websiteLd = buildWebSiteJsonLd();
+
   return (
     <html lang="es" suppressHydrationWarning>
       <body className="bg-background font-sans antialiased">
+        <JsonLd data={organizationLd} />
+        <JsonLd data={websiteLd} />
         <Providers>
           {children}
           <Toaster
