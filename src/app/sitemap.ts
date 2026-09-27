@@ -22,6 +22,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = (process.env.NEXT_PUBLIC_APP_URL || 'https://divinittys.cl').replace(/\/$/, '');
 
   // Solo BEAUTY en sitemap SEO — SECONDARY no compite por ranking de belleza
+  // Nota: no listamos ?category= aquí porque /productos con filtros es noindex
+  // (evitar sitemap → URL noindex). Categorías dedicadas serían Fase futura.
   const products = await prisma.product.findMany({
     where: { isActive: true, catalogScope: 'BEAUTY' },
     select: { slug: true, updatedAt: true },

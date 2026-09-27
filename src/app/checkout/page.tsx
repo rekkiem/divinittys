@@ -2,7 +2,8 @@ import Navbar from '@/components/layout/Navbar';
 import CheckoutForm from '@/components/shop/CheckoutForm';
 
 export const metadata = {
-  title: 'Checkout | DIVINITTYS',
+  title: 'Checkout',
+  robots: { index: false, follow: false },
 };
 
 export default function CheckoutPage() {
