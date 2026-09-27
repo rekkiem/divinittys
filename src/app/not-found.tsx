@@ -1,9 +1,11 @@
 import Link from 'next/link';
+import type { Metadata } from 'next';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 
-export const metadata = {
-  title: 'Página no encontrada | DIVINITTYS',
+export const metadata: Metadata = {
+  title: 'Página no encontrada',
+  robots: { index: false, follow: true },
 };
 
 export default function NotFound() {
@@ -20,8 +22,12 @@ export default function NotFound() {
             La página que buscas no existe o fue movida.
           </p>
           <div className="flex gap-3 justify-center">
-            <Link href="/" className="btn-primary">Ir al inicio</Link>
-            <Link href="/productos" className="btn-secondary">Ver productos</Link>
+            <Link href="/" className="btn-primary">
+              Ir al inicio
+            </Link>
+            <Link href="/productos" className="btn-secondary">
+              Ver productos
+            </Link>
           </div>
         </div>
       </main>
