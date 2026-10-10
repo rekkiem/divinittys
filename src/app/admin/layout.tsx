@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { verifyAccessToken } from '@/lib/auth';
-import AdminSidebar from '@/components/admin/AdminSidebar';
-import AdminHeader from '@/components/admin/AdminHeader';
+import { prisma } from '@/lib/prisma';
+import AdminShell from '@/components/admin/AdminShell';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,15 +35,17 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     redirect('/cuenta');
   }
 
-  return (
-    <div className="min-h-screen bg-muted/30 flex">
-      <AdminSidebar />
-      <div className="flex-1 flex flex-col min-w-0">
-        <AdminHeader />
-        <main className="flex-1 p-6 lg:p-8 overflow-auto">
-          {children}
-        </main>
-      </div>
-    </div>
-  );
+  // Datos de usuario para header (inicial / nombre / avatar). No cambia auth.
+  const dbUser = await prisma.user.findFirst({
+    where: { id: payload.userId, isActive: true },
+    select: { name: true, email: true, avatar: true },
+  });
+
+  const user = {
+    name: dbUser?.name ?? null,
+    email: dbUser?.email ?? payload.email,
+    avatar: dbUser?.avatar ?? null,
+  };
+
+  return <AdminShell user={user}>{children}</AdminShell>;
 }
