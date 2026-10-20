@@ -36,24 +36,6 @@ curl -sk https://127.0.0.1/api/health
 
 No borrar volúmenes (`postgres_data`, MinIO, Meili) salvo decisión explícita y backup. Este cambio de UI no requiere `migrate` ni seed. Un `curl` inmediato después del `up` puede dar 502 hasta que `divinittys_app` pase a healthy.
 
-### Local en el host (Windows, `npm run dev`)
-
-Dentro de Compose los hostnames son `postgres` y `redis`. Desde el host de Windows no existen.
-
-```env
-PORT_POSTGRES=5433
-POSTGRES_PASSWORD=divinittys_secret
-DATABASE_URL=postgresql://divinittys:divinittys_secret@127.0.0.1:5433/divinittys?schema=public
-REDIS_URL=redis://127.0.0.1:6379
-ADMIN_PASSWORD="Admin123!@#"
-```
-
-- `POSTGRES_PASSWORD` y la clave de `DATABASE_URL` tienen que ser la misma con la que se **inicializó** el volumen.
-- Usar `127.0.0.1`, no `localhost` (en Windows `localhost` puede ir a IPv6 / otro Postgres).
-- `REDIS_URL` sin espacio al inicio. Publicar Redis en el host (`docker run -d --name divinittys_redis_host -p 6379:6379 redis:7-alpine` o el servicio del compose). Si Redis no responde, el login puede colgarse: el rate-limit no hace fallback mientras ioredis encola offline.
-- `prisma migrate deploy` + `npx tsx prisma/seed.ts` crean schema, admin, categorías, marcas y settings. **No** cargan productos. Esos entran con `scripts/import-ml-products.ts`.
-- No poner `RUNNING_IN_DOCKER=true` si Next corre en el host.
-
 ---
 
 ## Arquitectura del Sistema
