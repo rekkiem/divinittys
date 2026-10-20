@@ -1,35 +1,87 @@
 # DIVINITTYS — E-Commerce de Productos de Belleza
 
-> Plataforma e-commerce moderna para venta de productos de belleza profesional. Stack: Next.js 14, PostgreSQL, Prisma, Redis, Meilisearch, Docker.
+> Plataforma e-commerce para venta de productos de belleza profesional. Stack: Next.js 14, PostgreSQL, Prisma 6.2.1, Redis, Meilisearch, Docker.
+>
+> Repo: https://github.com/rekkiem/divinittys · Producción: https://divinittys.cl · VPS: `/opt/divinittys` (`vps-div`).
+
+---
+
+## Estado (20 oct 2026)
+
+Producción corre `main` con health `{"status":"ok"}`. El panel admin en móvil ya navega (drawer). El catálogo de prod **no** se regenera con el seed: vive en el volumen de Postgres.
+
+| Ítem | Valor |
+|---|---|
+| Commit de referencia | `bc7f302` — drawer admin móvil (#19). Rollback previo: `41c6e4e` |
+| Compose en el VPS | **siempre** `docker compose -f docker-compose.prod.yml --env-file .env.production` |
+| Prisma | **6.2.1** (`npx prisma@6.2.1`). No usar `npx prisma` suelto (instala 7 y rompe el schema) |
+| Admin | `admin@divinittys.cl` + `ADMIN_PASSWORD` del entorno (entrecomillar si lleva `#`) |
+
+### Ya en producción
+
+- Catálogo `catalogScope` BEAUTY | SECONDARY, SEO base, JSON-LD, robots / noindex de rutas privadas.
+- Login propio (cookie `access_token`) y Google (Auth.js, basePath `/api/nextauth`). El layout de `/admin` sigue exigiendo la cookie JWT propia.
+- Drawer admin <1024px: `AdminShell` + Radix Dialog, ítems en `src/components/admin/admin-nav.ts`. Sidebar fijo desde `lg`.
+- Import ML, enrichment, direcciones de cliente, fulfillment post-pago (email / BX / Telegram).
+
+### Deploy (VPS)
+
+```bash
+cd /opt/divinittys
+git fetch origin && git checkout main && git pull origin main
+docker compose -f docker-compose.prod.yml --env-file .env.production build app
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+curl -sk https://127.0.0.1/api/health
+```
+
+No borrar volúmenes (`postgres_data`, MinIO, Meili) salvo decisión explícita y backup. Este cambio de UI no requiere `migrate` ni seed. Un `curl` inmediato después del `up` puede dar 502 hasta que `divinittys_app` pase a healthy.
+
+### Local en el host (Windows, `npm run dev`)
+
+Dentro de Compose los hostnames son `postgres` y `redis`. Desde el host de Windows no existen.
+
+```env
+PORT_POSTGRES=5433
+POSTGRES_PASSWORD=divinittys_secret
+DATABASE_URL=postgresql://divinittys:divinittys_secret@127.0.0.1:5433/divinittys?schema=public
+REDIS_URL=redis://127.0.0.1:6379
+ADMIN_PASSWORD="Admin123!@#"
+```
+
+- `POSTGRES_PASSWORD` y la clave de `DATABASE_URL` tienen que ser la misma con la que se **inicializó** el volumen.
+- Usar `127.0.0.1`, no `localhost` (en Windows `localhost` puede ir a IPv6 / otro Postgres).
+- `REDIS_URL` sin espacio al inicio. Publicar Redis en el host (`docker run -d --name divinittys_redis_host -p 6379:6379 redis:7-alpine` o el servicio del compose). Si Redis no responde, el login puede colgarse: el rate-limit no hace fallback mientras ioredis encola offline.
+- `prisma migrate deploy` + `npx tsx prisma/seed.ts` crean schema, admin, categorías, marcas y settings. **No** cargan productos. Esos entran con `scripts/import-ml-products.ts`.
+- No poner `RUNNING_IN_DOCKER=true` si Next corre en el host.
 
 ---
 
 ## Arquitectura del Sistema
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
+┌───────────────────────────────────────────────────────────────────────┐
 │                        DIVINITTYS Platform                      │
-├─────────────────────────────────────────────────────────────────┤
+├───────────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────┐  │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────────┐  │
 │  │  Next.js 14  │    │  PostgreSQL  │    │   Meilisearch    │  │
 │  │  App Router  │───▶│    Prisma    │    │   Full-text      │  │
 │  │  Port: 3000  │    │  Port: 5432  │    │   Port: 7700     │  │
-│  └──────┬───────┘    └──────────────┘    └──────────────────┘  │
+│  └──────┬───────┘    └─────────────┘    └─────────────────┘  │
 │         │                                                        │
-│  ┌──────▼───────┐    ┌──────────────┐    ┌──────────────────┐  │
+│  ┌──────▼───────┐    ┌─────────────┐    ┌─────────────────┐  │
 │  │  API Routes  │    │    Redis 7   │    │     MinIO S3     │  │
 │  │  /api/*      │───▶│  Cache/Queue │    │  Object Storage  │  │
 │  │  /api/admin/*│    │  Port: 6379  │    │  Port: 9000/9001 │  │
-│  └──────────────┘    └──────────────┘    └──────────────────┘  │
+│  └─────────────┘    └─────────────┘    └─────────────────┘  │
 │                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+└───────────────────────────────────────────────────────────────────────────┘
 
-Flujo de autenticación:
-  Browser → Cookie (httpOnly) + Authorization Bearer
-         → verifyAccessToken (JWT)
-         → prisma.user.findFirst (DB source of truth)
-         → withAdmin() → 401/403/AdminUser
+Auth del panel:
+  Browser → cookie httpOnly access_token (login email/password)
+         → JWT verificado en el layout de /admin
+  Google (Auth.js) no emite esa cookie por sí sola.
+  Varios componentes admin también mandan Authorization Bearer desde Zustand.
 ```
 
 ---
@@ -40,22 +92,22 @@ Flujo de autenticación:
 |---|---|---|
 | Frontend | Next.js App Router | 14.2.x |
 | Lenguaje | TypeScript | 5.5 |
-| ORM | Prisma | 5.15 |
+| ORM | Prisma | **6.2.1** |
 | Base de datos | PostgreSQL | 16 |
 | Cache / Colas | Redis | 7 |
 | Búsqueda | Meilisearch | 1.6 |
 | Storage | MinIO (S3-compatible) | latest |
-| Contenedores | Docker Compose | v3 |
+| Contenedores | Docker Compose | prod: `docker-compose.prod.yml` |
 | Tests | Vitest + Playwright | 2.1 / 1.45 |
-| Pagos | Transbank Webpay + MercadoPago | SDK v6 |
-| Envíos | Bluexpress API | REST |
+| Pagos | Transbank Webpay + MercadoPago | Checkout Preferences |
+| Envíos | Blue Express API | REST |
 
 ---
 
 ## Requisitos
 
 - **Docker Desktop** 4.x+ (con WSL2 en Windows)
-- **Node.js** 20+ (solo para desarrollo local sin Docker)
+- **Node.js** 20+ para `npm run dev` en el host (en el VPS no depender del Node del sistema: usar la imagen `node:20-alpine`)
 - **npm** 10+
 - 4GB RAM disponible para Docker
 
@@ -66,254 +118,166 @@ Flujo de autenticación:
 ### 1. Clonar y configurar
 
 ```bash
-# Clonar repositorio
-git clone https://github.com/tu-usuario/divinittys.git
+git clone https://github.com/rekkiem/divinittys.git
 cd divinittys
-
-# El .env viene preconfigurado para Docker local
-# Solo necesitas editarlo si hay conflictos de puertos
 cp .env.example .env
 ```
 
-### 2. Levantar con Docker (recomendado)
+Si Next corre **en el host** (no dentro del contenedor `app`), ajustá `DATABASE_URL` y `REDIS_URL` como en [Local en el host](#local-en-el-host-windows-npm-run-dev).
+
+### 2. Levantar con Docker (stack de desarrollo)
 
 ```bash
 docker compose up --build
 ```
 
-Primera vez: ~3-5 minutos (descarga imágenes, instala deps, migra BD).
+Primera vez: varios minutos (imágenes, deps, migración).
 
-**URLs disponibles:**
+**URLs típicas (compose de desarrollo):**
 
-| Servicio | URL | Credenciales |
-|---|---|---|
-| Tienda | http://localhost:3000 | — |
-| MinIO UI | http://localhost:9001 | divinittys_admin / divinittys_secret_2024 |
-| Meilisearch | http://localhost:7700 | — |
+| Servicio | URL |
+|---|---|
+| Tienda | http://localhost:3000 |
+| MinIO UI | http://localhost:9001 |
+| Meilisearch | http://localhost:7700 |
 
-### 3. Reset completo (limpia todos los datos)
+Credenciales: las de tu `.env` (`MINIO_*`, `MEILI_MASTER_KEY`). No commitear secretos reales.
+
+### 3. Reset local (borra datos de desarrollo)
 
 ```bash
-docker compose down -v   # elimina volúmenes (DB, Redis, MinIO)
+docker compose down -v
 docker compose up --build
 ```
+
+**No ejecutar `down -v` en el VPS.**
 
 ---
 
 ## Variables de Entorno
 
-Copia `.env.example` a `.env` y ajusta según necesites:
+Copia `.env.example` a `.env` (local) o usá `.env.production` en el VPS. Placeholders, no secretos de producción:
 
 ```bash
-# ── Puertos (cambia si hay conflictos) ──────────────
 PORT_APP=3000
 PORT_POSTGRES=5432
 PORT_MINIO=9000
 PORT_MINIO_CONSOLE=9001
 PORT_MEILI=7700
-# PORT_REDIS=6380  # Solo si tienes Redis local en 6379
 
-# ── App ─────────────────────────────────────────────
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 
-# ── Base de datos ────────────────────────────────────
 POSTGRES_USER=divinittys
 POSTGRES_PASSWORD=divinittys_secret
 POSTGRES_DB=divinittys
-DATABASE_URL=postgresql://divinittys:divinittys_secret@postgres:5432/divinittys
+# Dentro de Compose:
+DATABASE_URL=postgresql://divinittys:divinittys_secret@postgres:5432/divinittys?schema=public
+# Desde el host Windows, ver sección Estado (127.0.0.1:5433).
 
-# ── Redis ────────────────────────────────────────────
 REDIS_URL=redis://redis:6379
 
-# ── Meilisearch ──────────────────────────────────────
-MEILI_MASTER_KEY=divinittys_meili_master_key_2024
+MEILI_MASTER_KEY=change_me
 MEILISEARCH_URL=http://meilisearch:7700
-MEILISEARCH_API_KEY=divinittys_meili_master_key_2024
+MEILISEARCH_API_KEY=change_me
 
-# ── Auth JWT ─────────────────────────────────────────
-JWT_SECRET=divinittys_super_secret_jwt_key_local_dev_2024_abc
-JWT_REFRESH_SECRET=divinittys_super_secret_refresh_key_local_dev_2024_xyz
+JWT_SECRET=change_me_min_32_chars
+JWT_REFRESH_SECRET=change_me_min_32_chars
+AUTH_SECRET=change_me_min_32_chars
 
-# ── Pagos (integración para testing) ─────────────────
-TRANSBANK_COMMERCE_CODE=597055555532
-TRANSBANK_API_KEY=579B532A7440BB0C9079DED94D31EA1615BACEB56610332264630D42D0A36B1C
-TRANSBANK_ENV=integration   # cambiar a "production" en producción
+TRANSBANK_ENV=integration
+MERCADOPAGO_ACCESS_TOKEN=
+OPENAI_API_KEY=
+BLUEXPRESS_API_KEY=
 
-# ── APIs opcionales (mock/fallback sin ellas) ─────────
-OPENAI_API_KEY=             # Para asistente LUNA
-MERCADOPAGO_ACCESS_TOKEN=   # Para pagos con MercadoPago
-BLUEXPRESS_API_KEY=         # Para cotizaciones de envío
-
-# ── MinIO ────────────────────────────────────────────
-MINIO_ROOT_USER=divinittys_admin
-MINIO_ROOT_PASSWORD=divinittys_secret_2024
+ADMIN_EMAIL=admin@divinittys.cl
+ADMIN_PASSWORD="change_me"
 ```
+
+Si `ADMIN_PASSWORD` contiene `#`, **tiene que ir entre comillas**. Dotenv trunca en `#`; Docker Compose no. El hash del seed depende de quién lo lea.
 
 ---
 
 ## Importación Masiva de Productos
 
-### Desde MercadoLibre (formato xlsx oficial)
+El seed no importa el catálogo.
 
 ```bash
-# 1. Exportar desde ML: Mis publicaciones → Exportar → xlsx
+# Dry run
+npx tsx scripts/import-ml-products.ts --file=./Publicaciones.xlsx --dry-run
 
-# 2. Dry run (sin cambios en DB, solo muestra qué importaría)
-docker exec divinittys_app npx tsx scripts/import-ml-products.ts \
-  --file=./Publicaciones.xlsx --dry-run
+# Importación real
+npx tsx scripts/import-ml-products.ts --file=./Publicaciones.xlsx
 
-# 3. Importación real
-docker exec divinittys_app npx tsx scripts/import-ml-products.ts \
-  --file=./Publicaciones.xlsx
-
-# 4. Solo una categoría
-docker exec divinittys_app npx tsx scripts/import-ml-products.ts \
-  --file=./Publicaciones.xlsx --category=coloracion
-
-# 5. Re-indexar en Meilisearch después de importar
-docker exec divinittys_app npx tsx scripts/reindex-search.ts
+# Reindex Meilisearch
+npx tsx scripts/reindex-search.ts
 ```
 
-### Desde Excel personalizado (formato propio)
+Dentro del contenedor de prod, el mismo script vía `docker exec` sobre el servicio que tenga el repo y `DATABASE_URL` de la red Docker (`postgres`, no `127.0.0.1`).
 
-Usa el endpoint API directamente:
+Excel histórico en el repo: `Publicaciones-2026_03_22-21_10.xlsx`.
 
-```bash
-curl -X POST http://localhost:3000/api/import \
-  -H "Authorization: Bearer <tu-token-admin>" \
-  -F "fichas=@fichas_tecnicas.xlsx" \
-  -F "precios=@precios_stock.xlsx"
-```
+---
 
-**Formato esperado fichas técnicas:**
-| sku | nombre | descripcion | categoria | marca | peso |
-|---|---|---|---|---|---|
+## Panel admin
 
-**Formato esperado precios/stock:**
-| sku | precio | precio_comparar | stock | activo |
-|---|---|---|---|---|
+| Módulo | Ruta |
+|---|---|
+| Dashboard | /admin |
+| Productos | /admin/productos |
+| Pedidos | /admin/pedidos |
+| Clientes | /admin/clientes |
+| Categorías | /admin/categorias |
+| Stock | /admin/stock |
+| Ofertas | /admin/ofertas |
+| Importar | /admin/importar |
+| Configuración | /admin/configuracion |
+
+En viewport <1024px el menú es un drawer (hamburguesa). Desde `lg` el sidebar queda fijo. Archivos: `src/components/admin/AdminShell.tsx`, `AdminHeader.tsx`, `AdminSidebar.tsx`, `admin-nav.ts`.
 
 ---
 
 ## Tests
 
 ```bash
-# Ejecutar todos los tests (unit + integration + smoke)
 npm run test
-
-# Por tipo
-npm run test:unit         # Funciones puras, utilidades
-npm run test:integration  # Endpoints API con mocks
-npm run test:smoke        # Conectividad (requiere servicios)
-npm run test:coverage     # Con reporte HTML
-
-# E2E con Playwright (requiere servidor corriendo)
-npm run test:e2e          # Headless
-npm run test:e2e:headed   # Con browser visible
-npm run test:e2e:ui       # Con UI interactiva
-
-# Health check de servicios
-npm run health            # Desde host
-docker exec divinittys_app npx tsx scripts/health-check.ts  # Desde Docker
+npm run test:unit
+npm run test:integration
+npm run test:smoke
+npm run test:e2e
+npx tsc --noEmit
+npm run lint
+npm run build
 ```
 
-**Cobertura actual (89 tests, 11 suites):**
+E2E del drawer: `src/tests/e2e/admin-mobile-nav.e2e.ts` (viewport 390×844).
 
-| Suite | Tests | Estado |
-|---|---|---|
-| unit/admin-auth | 16 | ✅ |
-| unit/admin | 8 | ✅ |
-| unit/utils | 9 | ✅ |
-| integration/admin-middleware | 11 | ✅ |
-| integration/admin-products | 17 | ✅ |
-| integration/admin-categories | 7 | ✅ |
-| integration/admin-orders | 5 | ✅ |
-| smoke/database | 6 | ✅ |
-| smoke/meilisearch | 3 | ✅ |
-| smoke/api-products | 4 | ✅ |
-| smoke/auth | 3 | ✅ |
+El aviso de build `Route /api/oauth/google-callback couldn't be rendered statically because it used headers` no aborta el build: la ruta es dinámica.
 
----
-
-
-### Módulos disponibles
-
-| Módulo | Ruta | Funcionalidades |
-|---|---|---|
-| Dashboard | /admin | Estadísticas, pedidos recientes, stock bajo |
-| Productos | /admin/productos | Listado, búsqueda, activar/desactivar, eliminar |
-| Nuevo producto | /admin/productos/nuevo | Formulario completo con validación |
-| Editar producto | /admin/productos/[slug]/editar | Pre-cargado con datos actuales |
-| Pedidos | /admin/pedidos | Listado, cambio de estado |
-| Clientes | /admin/clientes | Listado de usuarios registrados |
-| Categorías | /admin/categorias | CRUD inline con edición en tabla |
-| Stock | /admin/stock | Inventario completo con alertas |
-| Ofertas | /admin/ofertas | Productos en oferta con % descuento |
-| Importar | /admin/importar | Carga masiva desde Excel |
-
----
-
-## CI/CD (GitHub Actions)
-
-El archivo `.github/workflows/ci.yml` ejecuta:
-
-```
-push/PR → main ─┬─ unit-integration  (Vitest sin DB)
-                ├─ typecheck         (tsc --noEmit)
-                ├─ e2e               (Playwright + Docker, solo push)
-                └─ docker-build      (verifica Dockerfile)
-```
+CI (`.github/workflows/ci.yml`): unit/integration, typecheck, e2e en push, docker build. Pendiente de merge: `npm ci --legacy-peer-deps` ([PR #12](https://github.com/rekkiem/divinittys/pull/12)), alineado con el Dockerfile.
 
 ---
 
 ## Troubleshooting
 
-### Error 403 al crear productos
-```bash
-# Opción A: Reset completo
-docker compose down -v && docker compose up --build
+### No puedo entrar a /admin en local
 
-# Opción B: Sin perder datos
-curl -X POST http://localhost:3000/api/admin/fix-seed
-# Luego cerrar sesión y volver a iniciar
-```
+1. `docker compose ps` — Postgres healthy y el puerto publicado coincide con `DATABASE_URL` (`5433` si `PORT_POSTGRES=5433`).
+2. `npx prisma@6.2.1 migrate status` tiene que mostrar el mismo host/puerto que el `.env`. Si dice otro puerto, hay un `$env:DATABASE_URL` viejo en la sesión de PowerShell (`Remove-Item Env:DATABASE_URL`).
+3. Redis: `docker exec … redis-cli ping` → `PONG`. Sin Redis, `POST /api/auth?action=login` puede colgarse (`ENOTFOUND redis` o `ECONNREFUSED 127.0.0.1:6379`).
+4. Password del admin = valor completo de `ADMIN_PASSWORD` (con `#` si va entre comillas). Re-seed: `npx tsx prisma/seed.ts`.
+5. Login Google no abre `/admin`: el layout lee la cookie `access_token`, que solo setea el login email/password.
 
-### Diagnóstico 403
-```bash
-curl http://localhost:3000/api/admin/debug \
-  -H "Cookie: access_token=<tu-token>"
-# Muestra: rol en JWT, rol en DB, diagnóstico
-```
+### 502 justo después del deploy
 
-### Puerto en uso (ERR_ADDR_IN_USE)
-```bash
-# Crear .env con puertos alternativos:
-echo "PORT_APP=3001" >> .env
-echo "PORT_POSTGRES=5433" >> .env
-docker compose up --build
-```
+Normal mientras `divinittys_app` está `health: starting`. Reintentar `curl` a los ~30 s. Si sigue, `docker compose … logs app --tail 80`.
 
-### Redis ENOTFOUND
-```bash
-# El health-check ejecutado desde el HOST usa localhost
-# Para ejecutar dentro de Docker:
-docker exec divinittys_app npx tsx scripts/health-check.ts
-```
+### Prisma P1000 / P1001
 
-### Tests muestran "App not running"
-```bash
-# Normal: los smoke tests de API se saltan si el servidor no está corriendo
-# Para ejecutarlos con servidor activo:
-docker compose up -d
-npm run test:smoke
-```
+P1000 = usuario/clave no coinciden con el volumen. P1001 = nadie escucha en ese host:puerto (contenedor caído, puerto mal, u otro Postgres).
 
-### Meilisearch unhealthy
-```bash
-# Verificar que el healthcheck use la imagen correcta
-docker logs divinittys_meili | head -20
-# Debe mostrar "Package version: 1.6.x"
-```
+### Puerto en uso
+
+Cambiar `PORT_POSTGRES` (en Windows se usó **5433**) y la URL. No apuntar Prisma a un Postgres distinto del contenedor `divinittys_db`.
 
 ---
 
@@ -321,101 +285,57 @@ docker logs divinittys_meili | head -20
 
 ```
 divinittys/
-├── .github/workflows/ci.yml    # GitHub Actions CI/CD
-├── docker-compose.yml           # Servicios: app, postgres, redis, meilisearch, minio
-├── Dockerfile                   # Multi-stage: deps, development, builder, production
-├── prisma/
-│   ├── schema.prisma            # Modelos: User, Product, Category, Order, Inventory...
-│   ├── seed.ts                  # Datos iniciales (admin, categorías, marcas)
-│   └── migrations/              # Migraciones SQL
-├── scripts/
-│   ├── import-ml-products.ts    # Importador MercadoLibre xlsx
-│   ├── import-products.ts       # Importador formato propio (fichas + precios)
-│   ├── reindex-search.ts        # Re-indexación Meilisearch
-│   └── health-check.ts          # Diagnóstico de servicios
-├── src/
-│   ├── app/                     # Next.js App Router
-│   │   ├── admin/               # Panel administrativo
-│   │   ├── api/                 # API Routes
-│   │   │   ├── admin/           # Endpoints protegidos (withAdmin)
-│   │   │   ├── auth/            # Login, registro, refresh
-│   │   │   ├── products/        # Catálogo público
-│   │   │   └── ...
-│   │   ├── productos/           # Storefront catálogo
-│   │   └── cuenta/              # Autenticación cliente
-│   ├── components/
-│   │   ├── admin/               # ProductForm, AdminSidebar, etc.
-│   │   ├── shop/                # ProductCard, HeroSection, etc.
-│   │   └── layout/              # Navbar, Footer, Providers
-│   ├── lib/
-│   │   ├── admin-auth.ts        # Middleware centralizado (withAdmin)
-│   │   ├── auth.ts              # JWT, cookies, getAuthUser
-│   │   ├── prisma.ts            # Cliente singleton
-│   │   ├── search/meilisearch.ts # Cliente con fallback SQL
-│   │   └── queue/               # BullMQ workers
-│   ├── hooks/
-│   │   ├── useAuth.ts           # Zustand + persist
-│   │   └── useCart.ts           # Carrito con persistencia
-│   └── tests/
-│       ├── unit/                # Tests puros (sin I/O)
-│       ├── integration/         # Tests API con mocks Prisma
-│       ├── smoke/               # Tests conectividad
-│       └── e2e/                 # Playwright flows
-├── playwright.config.ts
-├── vitest.config.ts
-├── render.yaml                  # Deploy Render.com
-└── DEPLOY.md                    # Guía de deploy en cloud
+├── docker-compose.yml
+├── docker-compose.prod.yml
+├── Dockerfile
+├── prisma/                 # schema, seed, migrations
+├── scripts/                # import-ml-products, reindex, reclassify, health
+└── src/
+    ├── app/admin/           # panel (layout servidor + AdminShell cliente)
+    ├── app/api/
+    ├── components/admin/    # AdminShell, admin-nav, sidebar, header
+    ├── lib/
+    └── tests/               # unit, integration, smoke, e2e
 ```
 
 ---
 
-## Deploy en Producción (Render.com)
+## Fases siguientes
 
-```bash
-# 1. Subir a GitHub
-git init && git add . && git commit -m "feat: initial"
-git remote add origin https://github.com/usuario/divinittys.git
-git push
+### 1. Auth que no se caiga si Redis se cae
 
-# 2. En render.com: New → Blueprint → conectar repo
-# Render detecta render.yaml y crea todos los servicios
+- Cliente Redis del **rate-limit** con timeout, `enableOfflineQueue: false` y fallback en memoria. No tocar el cliente BullMQ (`maxRetriesPerRequest: null`).
+- Listener `error` para no inundar la consola.
+- Bearer de Zustand inválido no debe anular una cookie `access_token` válida (la app Android futura sigue pudiendo usar Bearer).
+- `/admin`: usuario activo y rol leídos de la BD, no solo la firma del JWT. BD caída = error claro, no 500 opaco.
 
-# 3. Variables secretas a configurar en Render Dashboard:
-#    NEXT_PUBLIC_APP_URL, JWT_SECRET, JWT_REFRESH_SECRET
-#    OPENAI_API_KEY, MERCADOPAGO_ACCESS_TOKEN
-#    MEILISEARCH_URL, MEILISEARCH_API_KEY
-```
+### 2. DX local determinista
 
-Costo estimado: ~$24/mes (web + PostgreSQL + Redis en plan Starter).
+- `.env.example` coherente (host `127.0.0.1`, Postgres 5433, passwords entrecomilladas, Redis solo en loopback).
+- Servicios opcionales (MinIO / Meili) sin bloquear el arranque de la app.
+- Script PowerShell de arranque con reintento hasta que Postgres acepte TCP.
+- Cerrar [PR #12](https://github.com/rekkiem/divinittys/pull/12) (CI `npm ci --legacy-peer-deps`).
 
----
+### 3. Operación
 
-## Roadmap
+- Backup diario (B2 u otro off-site) y prueba de restore.
+- Rotar cualquier API key que haya quedado en logs o historial.
+- Confirmar que el VPS viejo (`64.176.5.1`) esté apagado/destruido si la migración ya se observó.
+- Pagos: `init_point` sandbox si el token MercadoPago empieza con `TEST-`; webhook POST HTTPS; prueba con credencial de producción y monto bajo.
 
-### v2.0 — Marketplace (5 semanas)
-- [ ] **Multi-vendor**: panel de vendedor, comisiones, payouts
-- [ ] **Meilisearch avanzado**: autocompletado, facets, filtros dinámicos
-- [ ] **BullMQ completo**: email automation, carrito abandonado
-- [ ] **Marketing**: cupones, promociones programadas, newsletter
-- [ ] **SEO masivo**: sitemap dinámico, JSON-LD, metadata dinámica
+### 4. SEO y tienda (opcional)
 
-### v2.1 — Performance
-- [ ] Cursor-based pagination (evita full scans con 1M+ productos)
-- [ ] Redis caching en rutas críticas (TTL configurable)
-- [ ] Next.js ISR en páginas de categoría y producto
-- [ ] PgBouncer para connection pooling en producción
+- URLs de categoría, logo en Organization JSON-LD, reindex en Search Console.
+- Performance del storefront medida con `next build` / prod (no con `next dev`): `next/dynamic` en piezas no críticas y `LazyMotion`. El admin en prod ya tiene LCP ~0,9 s en móvil; no es el cuello.
 
-### v2.2 — Mobile
-- [ ] PWA (Progressive Web App) con service workers
-- [ ] Push notifications para estado de pedidos
-- [ ] App Jetpack Compose (Android) — backend listo
+### Más adelante
+
+- PWA / push de pedidos.
+- Paginación por cursor e ISR si el catálogo crece mucho.
+- Multi-vendor completo (hay esqueleto de vendors; no es el foco operativo).
 
 ---
 
 ## Licencia
 
-MIT — Ver LICENSE para detalles.
-
----
-
-**¿Problemas?** Abre un issue en GitHub o consulta la sección [Troubleshooting](#troubleshooting).
+MIT — ver LICENSE.
