@@ -1,21 +1,23 @@
 /**
  * scripts/check-ml-availability.ts
  *
- * Busca cada producto del listado Divinittys en Mercado Libre Chile (API pública)
+ * Busca cada producto del listado Divinittys en Mercado Libre Chile
  * y reporta cuáles NO están o tienen muy poca competencia.
  *
- * Uso:
+ * IMPORTANTE (2026): /sites/MLC/search ya no es público → requiere Bearer token.
+ * Usa el mismo mecanismo que ml-competitor-full-audit:
+ *   1. ML_ACCESS_TOKEN env
+ *   2. .oauth/ml-tokens.json (con refresh si hay ML_CLIENT_ID/SECRET)
+ *
+ * Uso (PowerShell):
+ *   $env:ML_ACCESS_TOKEN="APP_USR-..."; npx tsx scripts/check-ml-availability.ts --limit 5
+ *
+ *   # O con archivo .oauth/ml-tokens.json (recomendado)
  *   npx tsx scripts/check-ml-availability.ts
- *   npx tsx scripts/check-ml-availability.ts --delay 1200
- *   npx tsx scripts/check-ml-availability.ts --limit 20          # solo primeros N (prueba)
- *   npx tsx scripts/check-ml-availability.ts --csv path/to.csv   # columnas: producto,detalle
+ *   npx tsx scripts/check-ml-availability.ts --delay 800 --limit 20
  *
- * Salida:
- *   - Consola con resumen
- *   - artifacts/ml-availability-YYYYMMDD-HHmmss.json
- *   - artifacts/ml-availability-YYYYMMDD-HHmmss.csv
- *
- * No requiere Docker ni token ML. Solo Node 18+ y red hacia api.mercadolibre.com.
+ * Salida: artifacts/ml-availability-*.json + .csv
+ * No requiere Docker.
  */
 
 import * as fs from "fs";
@@ -179,11 +181,21 @@ const EMBEDDED_PRODUCTS: { producto: string; detalle: string }[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Config
+// Config / token (mismo patrón que ml-competitor-full-audit)
 // ---------------------------------------------------------------------------
 const SITE_ID = "MLC";
 const API_BASE = `https://api.mercadolibre.com/sites/${SITE_ID}/search`;
-const USER_AGENT = "DivinittysBot/1.0 (+https://divinittys.cl; availability-check)";
+const TOKEN_FILE =
+  process.env.ML_TOKEN_FILE ||
+  path.resolve(process.cwd(), ".oauth", "ml-tokens.json");
+
+interface TokenData {
+  access_token: string;
+  refresh_token?: string;
+  expires_in: number;
+  obtained_at?: string;
+  user_id?: number;
+}
 
 interface ProductRow {
   producto: string;
@@ -219,7 +231,6 @@ function buildQuery(p: ProductRow): string {
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
-  // Quitar ruido típico
   return raw
     .replace(/\b(ml|mL|gr|g|lt|litro|volumen)\b/gi, " ")
     .replace(/\s+/g, " ")
@@ -234,18 +245,90 @@ function classify(total: number, maxSold: number): "ALTO" | "MEDIO" | "BAJO" {
   return "BAJO";
 }
 
-async function searchML(q: string): Promise<{ total: number; results: SearchHit[] }> {
+async function loadToken(): Promise<string> {
+  if (process.env.ML_ACCESS_TOKEN) {
+    return process.env.ML_ACCESS_TOKEN;
+  }
+
+  if (!fs.existsSync(TOKEN_FILE)) {
+    throw new Error(
+      `Sin token.\n` +
+        `  Opción A (PowerShell): $env:ML_ACCESS_TOKEN="APP_USR-..."\n` +
+        `  Opción B: archivo ${TOKEN_FILE}\n` +
+        `  Renová con: npx tsx scripts/ml-oauth-refresh.ts  (necesita ML_CLIENT_ID + ML_CLIENT_SECRET)`
+    );
+  }
+
+  const data: TokenData = JSON.parse(fs.readFileSync(TOKEN_FILE, "utf8"));
+  if (!data.access_token) {
+    throw new Error(`Archivo ${TOKEN_FILE} no tiene access_token`);
+  }
+
+  const expired =
+    !data.obtained_at ||
+    Date.now() >=
+      new Date(data.obtained_at).getTime() + (data.expires_in || 0) * 1000 - 120_000;
+
+  if (expired && data.refresh_token) {
+    const clientId = process.env.ML_CLIENT_ID || process.env.ML_APP_ID;
+    const clientSecret = process.env.ML_CLIENT_SECRET;
+    if (clientId && clientSecret) {
+      console.log("🔄 Token expirado → renovando...");
+      const body = new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: data.refresh_token,
+      });
+      const res = await fetch("https://api.mercadolibre.com/oauth/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+      });
+      const text = await res.text();
+      if (!res.ok) {
+        console.warn(`⚠️  Refresh falló (${res.status}). Se usa access_token actual.`);
+      } else {
+        const updated = JSON.parse(text);
+        const newData: TokenData = {
+          ...data,
+          access_token: updated.access_token,
+          refresh_token: updated.refresh_token || data.refresh_token,
+          expires_in: updated.expires_in,
+          obtained_at: new Date().toISOString(),
+        };
+        fs.writeFileSync(TOKEN_FILE, JSON.stringify(newData, null, 2), {
+          mode: 0o600,
+        });
+        console.log("✅ Token renovado");
+        return newData.access_token;
+      }
+    } else {
+      console.warn(
+        "⚠️  Token posiblemente expirado y faltan ML_CLIENT_ID/ML_CLIENT_SECRET. Se intenta con el actual."
+      );
+    }
+  }
+
+  return data.access_token;
+}
+
+async function searchML(
+  q: string,
+  token: string
+): Promise<{ total: number; results: SearchHit[] }> {
   const url = `${API_BASE}?q=${encodeURIComponent(q)}&limit=5`;
   const res = await fetch(url, {
     headers: {
-      "User-Agent": USER_AGENT,
+      Authorization: `Bearer ${token}`,
       Accept: "application/json",
+      "User-Agent": "Divinittys-CheckAvailability/1.1",
     },
   });
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`HTTP ${res.status}: ${body.slice(0, 200)}`);
+    throw new Error(`HTTP ${res.status}: ${body.slice(0, 220)}`);
   }
 
   const data = (await res.json()) as {
@@ -275,7 +358,7 @@ async function searchML(q: string): Promise<{ total: number; results: SearchHit[
 
 function parseArgs() {
   const args = process.argv.slice(2);
-  let delay = 1000;
+  let delay = 800;
   let limit = Infinity;
   let csvPath: string | null = null;
 
@@ -292,11 +375,31 @@ function loadFromCsv(csvPath: string): ProductRow[] {
   if (!fs.existsSync(abs)) throw new Error(`CSV no encontrado: ${abs}`);
   const wb = XLSX.readFile(abs);
   const sheet = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: "" });
-  return rows.map((r) => ({
-    producto: (r.producto || r.Producto || r["Productos"] || Object.values(r)[0] || "").toString().trim(),
-    detalle: (r.detalle || r.Detalle || r["Detalle"] || Object.values(r)[1] || "").toString().trim(),
-  })).filter((r) => r.producto.length > 2);
+  const rows = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, {
+    defval: "",
+  });
+  return rows
+    .map((r) => ({
+      producto: (
+        r.producto ||
+        r.Producto ||
+        r["Productos"] ||
+        Object.values(r)[0] ||
+        ""
+      )
+        .toString()
+        .trim(),
+      detalle: (
+        r.detalle ||
+        r.Detalle ||
+        r["Detalle"] ||
+        Object.values(r)[1] ||
+        ""
+      )
+        .toString()
+        .trim(),
+    }))
+    .filter((r) => r.producto.length > 2);
 }
 
 function ensureArtifactsDir(): string {
@@ -316,8 +419,13 @@ async function main() {
   let products = csvPath ? loadFromCsv(csvPath) : EMBEDDED_PRODUCTS;
   products = products.slice(0, limit);
 
-  console.log(`\n🔍 check-ml-availability — MLC`);
-  console.log(`   Productos: ${products.length} | delay: ${delay}ms | fuente: ${csvPath || "embebido"}\n`);
+  console.log(`\n🔍 check-ml-availability — MLC (con token)`);
+  console.log(
+    `   Productos: ${products.length} | delay: ${delay}ms | fuente: ${csvPath || "embebido"}\n`
+  );
+
+  const token = await loadToken();
+  console.log(`   Token OK (${token.slice(0, 12)}...)\n`);
 
   const results: ResultRow[] = [];
   let idx = 0;
@@ -325,10 +433,12 @@ async function main() {
   for (const p of products) {
     idx++;
     const query = buildQuery(p);
-    process.stdout.write(`[${idx}/${products.length}] ${query.slice(0, 55).padEnd(55)} `);
+    process.stdout.write(
+      `[${idx}/${products.length}] ${query.slice(0, 55).padEnd(55)} `
+    );
 
     try {
-      const { total, results: hits } = await searchML(query);
+      const { total, results: hits } = await searchML(query, token);
       const maxSold = hits.reduce((m, h) => Math.max(m, h.sold_quantity), 0);
       const potencial = classify(total, maxSold);
 
@@ -344,7 +454,8 @@ async function main() {
       };
       results.push(row);
 
-      const emoji = potencial === "ALTO" ? "🟢" : potencial === "MEDIO" ? "🟡" : "🔴";
+      const emoji =
+        potencial === "ALTO" ? "🟢" : potencial === "MEDIO" ? "🟡" : "🔴";
       console.log(`${emoji} total=${total} sold=${maxSold} → ${potencial}`);
     } catch (err: any) {
       console.log(`❌ ${err.message}`);
@@ -364,14 +475,15 @@ async function main() {
     if (idx < products.length) await sleep(delay);
   }
 
-  // Resumen
   const alto = results.filter((r) => r.potencial === "ALTO");
   const medio = results.filter((r) => r.potencial === "MEDIO");
   const bajo = results.filter((r) => r.potencial === "BAJO");
   const errors = results.filter((r) => r.potencial === "ERROR");
 
   console.log("\n══════════════════════════════════════════════════");
-  console.log(`✅ ALTO potencial (ausentes / poca competencia): ${alto.length}`);
+  console.log(
+    `✅ ALTO potencial (ausentes / poca competencia): ${alto.length}`
+  );
   console.log(`🟡 MEDIO: ${medio.length}`);
   console.log(`🔴 BAJO (ya saturados): ${bajo.length}`);
   if (errors.length) console.log(`❌ Errores: ${errors.length}`);
@@ -379,19 +491,37 @@ async function main() {
 
   if (alto.length) {
     console.log("── Productos ALTO potencial ──");
-    alto.forEach((r) => console.log(`  • ${r.producto} ${r.detalle}  (total=${r.total})`));
+    alto.forEach((r) =>
+      console.log(`  • ${r.producto} ${r.detalle}  (total=${r.total})`)
+    );
     console.log("");
   }
 
-  // Guardar archivos
   const dir = ensureArtifactsDir();
   const ts = stamp();
   const jsonPath = path.join(dir, `ml-availability-${ts}.json`);
   const csvOutPath = path.join(dir, `ml-availability-${ts}.csv`);
 
-  fs.writeFileSync(jsonPath, JSON.stringify({ generatedAt: new Date().toISOString(), summary: { alto: alto.length, medio: medio.length, bajo: bajo.length, errors: errors.length }, results }, null, 2));
+  fs.writeFileSync(
+    jsonPath,
+    JSON.stringify(
+      {
+        generatedAt: new Date().toISOString(),
+        summary: {
+          alto: alto.length,
+          medio: medio.length,
+          bajo: bajo.length,
+          errors: errors.length,
+        },
+        results,
+      },
+      null,
+      2
+    )
+  );
 
-  const csvHeader = "producto,detalle,query,total,potencial,topTitles,topPrices,topSold,error\n";
+  const csvHeader =
+    "producto,detalle,query,total,potencial,topTitles,topPrices,topSold,error\n";
   const csvBody = results
     .map((r) =>
       [
@@ -414,6 +544,6 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error(e);
+  console.error("\n❌", e.message || e);
   process.exit(1);
 });
