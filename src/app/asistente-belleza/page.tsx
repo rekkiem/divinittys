@@ -3,7 +3,8 @@ import Footer from '@/components/layout/Footer';
 import BeautyChat from '@/components/ai/BeautyChat';
 
 export const metadata = {
-  title: 'Asistente de Belleza LUNA | DIVINITTYS',
+  alternates: { canonical: '/asistente-belleza' },
+  title: 'Asistente de Belleza LUNA',
   description: 'Chatea con LUNA, tu asistente de belleza impulsada por IA. Recibe recomendaciones personalizadas.',
 };
 

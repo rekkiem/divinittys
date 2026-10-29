@@ -3,7 +3,8 @@ import Footer from '@/components/layout/Footer';
 import HairDiagnosisForm from '@/components/ai/HairDiagnosisForm';
 
 export const metadata = {
-  title: 'Diagnóstico Capilar IA | DIVINITTYS',
+  alternates: { canonical: '/diagnostico-capilar' },
+  title: 'Diagnóstico Capilar IA',
   description: 'Descubre los productos perfectos para tu cabello con nuestro diagnóstico personalizado impulsado por IA.',
 };
 
