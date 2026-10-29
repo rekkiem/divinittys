@@ -1,9 +1,10 @@
 import { prisma } from '@/lib/prisma';
-import { getAuthUser } from '@/lib/auth';
-import { redirect } from 'next/navigation';
-import { cookies } from 'next/headers';
-import { NextRequest } from 'next/server';
 import { Package } from 'lucide-react';
+
+export const metadata = {
+  title: 'Panel de Vendedor',
+  robots: { index: false, follow: false },
+};
 
 async function getVendorData(userId: string) {
   const vendor = await prisma.vendor.findUnique({
