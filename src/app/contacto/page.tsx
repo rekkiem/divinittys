@@ -1,7 +1,11 @@
 import InfoPage from '@/components/layout/InfoPage';
 
 export const metadata = {
-  alternates: { canonical: '/contacto' }, title: 'Contacto' };
+  title: 'Contacto',
+  description:
+    'Contacto DIVINITTYS: email, WhatsApp y ubicación en Santiago. Atención de compras, envíos y postventa.',
+  alternates: { canonical: '/contacto' },
+};
 
 export default function ContactoPage() {
   return (

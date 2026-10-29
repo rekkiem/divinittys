@@ -2,7 +2,6 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SessionProvider } from 'next-auth/react';
-import { ThemeProvider } from 'next-themes';
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import OAuthSessionBridge from '@/components/auth/OAuthSessionBridge';
@@ -26,11 +25,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SessionProvider basePath="/api/nextauth">
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} storageKey="divinittys-theme">
-          <OAuthSessionBridge />
-          {children}
-          <BeautyChat />
-        </ThemeProvider>
+        <OAuthSessionBridge />
+        {children}
+        <BeautyChat />
       </QueryClientProvider>
     </SessionProvider>
   );

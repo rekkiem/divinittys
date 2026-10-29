@@ -1,7 +1,11 @@
 import InfoPage from '@/components/layout/InfoPage';
 
 export const metadata = {
-  alternates: { canonical: '/envios' }, title: 'Política de envíos' };
+  title: 'Política de envíos',
+  description:
+    'Envíos DIVINITTYS a todo Chile con Bluexpress. Plazos, costos y envío gratis sobre $50.000 CLP.',
+  alternates: { canonical: '/envios' },
+};
 
 export default function EnviosPage() {
   return (

@@ -1,8 +1,10 @@
 import InfoPage from '@/components/layout/InfoPage';
 
 export const metadata = {
-  alternates: { canonical: '/faq' },
   title: 'Preguntas frecuentes',
+  description:
+    'Respuestas sobre envíos a Chile, envío gratis, Webpay, MercadoPago, devoluciones y el asistente LUNA en DIVINITTYS.',
+  alternates: { canonical: '/faq' },
 };
 
 const FAQS = [
