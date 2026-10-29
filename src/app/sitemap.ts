@@ -3,52 +3,45 @@ export const dynamic = 'force-dynamic';
 import { MetadataRoute } from 'next';
 import { prisma } from '@/lib/prisma';
 
-type Freq = NonNullable<MetadataRoute.Sitemap[number]['changeFrequency']>;
-
-const STATIC_PATHS: { path: string; changeFrequency: Freq; priority: number }[] = [
-  { path: '/productos', changeFrequency: 'daily', priority: 0.9 },
-  { path: '/about', changeFrequency: 'monthly', priority: 0.5 },
-  { path: '/faq', changeFrequency: 'monthly', priority: 0.4 },
-  { path: '/contacto', changeFrequency: 'monthly', priority: 0.4 },
-  { path: '/envios', changeFrequency: 'monthly', priority: 0.3 },
-  { path: '/devoluciones', changeFrequency: 'monthly', priority: 0.3 },
-  { path: '/privacidad', changeFrequency: 'monthly', priority: 0.2 },
-  { path: '/terminos', changeFrequency: 'monthly', priority: 0.2 },
-  { path: '/diagnostico-capilar', changeFrequency: 'weekly', priority: 0.6 },
-  { path: '/asistente-belleza', changeFrequency: 'weekly', priority: 0.6 },
+/**
+ * Sitemap honesto (Fase 1 SEO)
+ * - lastModified fijo en estáticas (actualizar a mano si cambia el contenido)
+ * - sin changeFrequency / priority (Google los ignora)
+ * - solo productos BEAUTY activos
+ */
+const STATIC_PATHS: { path: string; lastModified: string }[] = [
+  { path: '/productos', lastModified: '2026-09-26' },
+  { path: '/about', lastModified: '2026-09-26' },
+  { path: '/faq', lastModified: '2026-09-26' },
+  { path: '/contacto', lastModified: '2026-09-26' },
+  { path: '/envios', lastModified: '2026-09-26' },
+  { path: '/devoluciones', lastModified: '2026-09-26' },
+  { path: '/privacidad', lastModified: '2026-09-26' },
+  { path: '/terminos', lastModified: '2026-09-26' },
+  { path: '/diagnostico-capilar', lastModified: '2026-09-26' },
+  { path: '/asistente-belleza', lastModified: '2026-09-26' },
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = (process.env.NEXT_PUBLIC_APP_URL || 'https://divinittys.cl').replace(/\/$/, '');
 
-  // Solo BEAUTY en sitemap SEO — SECONDARY no compite por ranking de belleza
-  // Nota: no listamos ?category= aquí porque /productos con filtros es noindex
-  // (evitar sitemap → URL noindex). Categorías dedicadas serían Fase futura.
   const products = await prisma.product.findMany({
     where: { isActive: true, catalogScope: 'BEAUTY' },
     select: { slug: true, updatedAt: true },
   });
 
-  const now = new Date();
-
   return [
     {
       url: base,
-      lastModified: now,
-      changeFrequency: 'daily',
-      priority: 1,
+      lastModified: new Date('2026-09-26'),
     },
-    ...STATIC_PATHS.map(({ path, changeFrequency, priority }) => ({
+    ...STATIC_PATHS.map(({ path, lastModified }) => ({
       url: `${base}${path}`,
-      lastModified: now,
-      changeFrequency,
-      priority,
+      lastModified: new Date(lastModified),
     })),
     ...products.map((product) => ({
       url: `${base}/productos/${product.slug}`,
       lastModified: product.updatedAt,
-      changeFrequency: 'daily' as const,
-      priority: 0.8,
     })),
   ];
 }

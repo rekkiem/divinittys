@@ -19,6 +19,13 @@ export const metadata: Metadata = {
   keywords: ['DIVINITTYS', 'belleza', 'productos capilares', 'coloración', 'keratina', 'tratamientos', 'Davines', 'Elgon', 'Chile'],
   authors: [{ name: 'DIVINITTYS' }],
   creator: 'DIVINITTYS',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/brand/icon-light.png', type: 'image/png', sizes: '512x512' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180' }],
+  },
   openGraph: {
     type: 'website',
     locale: 'es_CL',
@@ -38,13 +45,14 @@ export const metadata: Metadata = {
     follow: true,
     googleBot: { index: true, follow: true, 'max-video-preview': -1, 'max-image-preview': 'large' },
   },
-  alternates: {
-    canonical: siteUrl,
-  },
+  // Canónica solo en páginas concretas — no en el layout raíz (B1)
 };
 
 export const viewport: Viewport = {
-  themeColor: '#C9956A',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#C9956A' },
+    { media: '(prefers-color-scheme: dark)', color: '#1A1A1A' },
+  ],
   width: 'device-width',
   initialScale: 1,
 };
