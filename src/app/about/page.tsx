@@ -1,6 +1,7 @@
 import InfoPage from '@/components/layout/InfoPage';
 
 export const metadata = {
+  alternates: { canonical: '/about' },
   title: 'Sobre Nosotros',
   description:
     'Conoce DIVINITTYS: misión y visión de belleza profesional accesible en Chile. Las mejores marcas, envíos a todo el país.',

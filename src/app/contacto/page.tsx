@@ -1,6 +1,7 @@
 import InfoPage from '@/components/layout/InfoPage';
 
-export const metadata = { title: 'Contacto | DIVINITTYS' };
+export const metadata = {
+  alternates: { canonical: '/contacto' }, title: 'Contacto' };
 
 export default function ContactoPage() {
   return (

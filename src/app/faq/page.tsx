@@ -1,7 +1,8 @@
 import InfoPage from '@/components/layout/InfoPage';
 
 export const metadata = {
-  title: 'Preguntas frecuentes | DIVINITTYS',
+  alternates: { canonical: '/faq' },
+  title: 'Preguntas frecuentes',
 };
 
 const FAQS = [
