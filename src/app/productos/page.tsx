@@ -10,9 +10,9 @@ export const dynamic = 'force-dynamic';
 
 const siteUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://divinittys.cl').replace(/\/$/, '');
 
-/** Parámetros de filtro/paginación / scope que no deben generar páginas indexables. */
+/** Filtros que fuerzan noindex (no incluye page sola). */
 const FILTER_PARAMS = new Set([
-  'q', 'category', 'brand', 'onSale', 'page', 'sort', 'minPrice', 'maxPrice',
+  'q', 'category', 'brand', 'onSale', 'sort', 'minPrice', 'maxPrice',
   'priceMin', 'priceMax', 'tag', 'inStock', 'scope',
 ]);
 
@@ -21,30 +21,43 @@ export async function generateMetadata({
 }: {
   searchParams: { [key: string]: string | undefined };
 }): Promise<Metadata> {
-  const hasFilters = Object.keys(searchParams || {}).some((k) => FILTER_PARAMS.has(k));
-  const isSecondary = searchParams?.scope === 'secondary';
+  const params = searchParams || {};
+  const hasFilters = Object.keys(params).some((k) => FILTER_PARAMS.has(k));
+  const isSecondary = params.scope === 'secondary';
+  const pageNum = Math.max(1, parseInt(params.page || '1', 10) || 1);
+  const paginationOnly = !hasFilters && !isSecondary && pageNum >= 2;
 
-  const title = searchParams?.q
-    ? `Búsqueda: ${searchParams.q}`
+  const title = params.q
+    ? `Búsqueda: ${params.q}`
     : isSecondary
     ? 'Otros productos'
-    : searchParams?.onSale === 'true'
+    : params.onSale === 'true'
     ? 'Ofertas'
-    : searchParams?.category
+    : params.category
     ? 'Categoría'
+    : pageNum > 1
+    ? `Catálogo de Productos — Página ${pageNum}`
     : 'Catálogo de Productos';
+
+  const description = isSecondary
+    ? 'Accesorios, regalos y otros productos fuera del catálogo de belleza profesional.'
+    : 'Explora nuestra colección de productos de belleza y cuidado capilar profesional.';
+
+  if (hasFilters || isSecondary) {
+    return {
+      title,
+      description,
+      robots: { index: false, follow: true },
+    };
+  }
+
+  const canonicalPath = paginationOnly ? `/productos?page=${pageNum}` : '/productos';
 
   return {
     title,
-    description: isSecondary
-      ? 'Accesorios, regalos y otros productos fuera del catálogo de belleza profesional.'
-      : 'Explora nuestra colección de productos de belleza y cuidado capilar profesional.',
-    alternates: {
-      canonical: `${siteUrl}/productos`,
-    },
-    robots: hasFilters || isSecondary
-      ? { index: false, follow: true }
-      : { index: true, follow: true },
+    description,
+    alternates: { canonical: canonicalPath },
+    robots: { index: true, follow: true },
   };
 }
 
