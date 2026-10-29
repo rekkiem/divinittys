@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ArrowRight, Sparkles, Star } from 'lucide-react';
+import { ArrowRight, Sparkles } from 'lucide-react';
 
 const slides = [
   {
@@ -52,12 +52,10 @@ export default function HeroSection({ activeProductCount }: HeroSectionProps) {
 
   return (
     <section className={`relative min-h-[85vh] lg:min-h-screen flex items-center overflow-hidden bg-gradient-to-br ${slide.bg} transition-all duration-1000`}>
-      {/* Background decoration */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-[600px] h-[600px] rounded-full bg-gradient-to-br from-primary-200/40 to-rose-200/30 blur-3xl" />
         <div className="absolute -bottom-20 -left-20 w-[400px] h-[400px] rounded-full bg-gradient-to-tr from-champagne-300/50 to-primary-100/30 blur-3xl" />
 
-        {/* Floating particles */}
         {[...Array(6)].map((_, i) => (
           <motion.div
             key={i}
@@ -78,7 +76,6 @@ export default function HeroSection({ activeProductCount }: HeroSectionProps) {
           />
         ))}
 
-        {/* Grid pattern */}
         <div
           className="absolute inset-0 opacity-[0.03]"
           style={{
@@ -90,9 +87,7 @@ export default function HeroSection({ activeProductCount }: HeroSectionProps) {
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-32">
         <div className="grid lg:grid-cols-2 gap-16 items-center">
-          {/* Content */}
           <div className="space-y-8">
-            {/* Accent badge */}
             <motion.div
               key={`badge-${current}`}
               initial={{ opacity: 0, x: -20 }}
@@ -106,7 +101,6 @@ export default function HeroSection({ activeProductCount }: HeroSectionProps) {
               </span>
             </motion.div>
 
-            {/* Title */}
             <motion.div
               key={`title-${current}`}
               initial={{ opacity: 0, y: 30 }}
@@ -127,7 +121,6 @@ export default function HeroSection({ activeProductCount }: HeroSectionProps) {
               </p>
             </motion.div>
 
-            {/* Description */}
             <motion.p
               key={`desc-${current}`}
               initial={{ opacity: 0, y: 20 }}
@@ -138,7 +131,6 @@ export default function HeroSection({ activeProductCount }: HeroSectionProps) {
               {slide.description}
             </motion.p>
 
-            {/* CTAs */}
             <motion.div
               key={`cta-${current}`}
               initial={{ opacity: 0, y: 20 }}
@@ -156,27 +148,18 @@ export default function HeroSection({ activeProductCount }: HeroSectionProps) {
               </Link>
             </motion.div>
 
-            {/* Social proof — contador real de productos activos */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.5 }}
               className="flex items-center gap-6 pt-4"
             >
-              <div className="flex items-center gap-1">
-                {[...Array(5)].map((_, i) => (
-                  <Star key={i} className="w-4 h-4 text-primary-400 fill-primary-400" />
-                ))}
-                <span className="font-sans text-sm text-charcoal-500 ml-2">4.9/5</span>
-              </div>
-              <div className="h-4 w-px bg-border" />
-              <span className="font-sans text-sm text-charcoal-500">
+              <span className="font-sans text-sm text-charcoal-500 dark:text-champagne-200/80">
                 {countLabel}
               </span>
             </motion.div>
           </div>
 
-          {/* Visual */}
           <motion.div
             className="hidden lg:flex justify-center items-center relative"
             initial={{ opacity: 0, scale: 0.8 }}
