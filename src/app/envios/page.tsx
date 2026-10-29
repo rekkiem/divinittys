@@ -1,6 +1,7 @@
 import InfoPage from '@/components/layout/InfoPage';
 
-export const metadata = { title: 'Política de envíos | DIVINITTYS' };
+export const metadata = {
+  alternates: { canonical: '/envios' }, title: 'Política de envíos' };
 
 export default function EnviosPage() {
   return (

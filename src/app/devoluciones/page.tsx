@@ -1,6 +1,7 @@
 import InfoPage from '@/components/layout/InfoPage';
 
-export const metadata = { title: 'Devoluciones | DIVINITTYS' };
+export const metadata = {
+  alternates: { canonical: '/devoluciones' }, title: 'Devoluciones' };
 
 export default function DevolucionesPage() {
   return (
