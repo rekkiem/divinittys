@@ -8,8 +8,6 @@ import ProductsFilters from '@/components/shop/ProductsFilters';
 
 export const dynamic = 'force-dynamic';
 
-const siteUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://divinittys.cl').replace(/\/$/, '');
-
 /** Filtros que fuerzan noindex (no incluye page sola). */
 const FILTER_PARAMS = new Set([
   'q', 'category', 'brand', 'onSale', 'sort', 'minPrice', 'maxPrice',
