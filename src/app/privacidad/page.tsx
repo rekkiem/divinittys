@@ -1,11 +1,12 @@
 import InfoPage from '@/components/layout/InfoPage';
+import { buildPageMetadata } from '@/lib/seo/metadata';
 
-export const metadata = {
+export const metadata = buildPageMetadata({
   title: 'Privacidad',
   description:
     'Política de privacidad de DIVINITTYS: cómo tratamos datos de cuenta, pedidos y pagos. No vendemos tus datos a terceros.',
-  alternates: { canonical: '/privacidad' },
-};
+  path: '/privacidad',
+});
 
 export default function PrivacidadPage() {
   return (

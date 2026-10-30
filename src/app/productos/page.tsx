@@ -1,12 +1,17 @@
 import { Suspense } from 'react';
 import { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+import { unstable_cache } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import ProductsGrid from '@/components/shop/ProductsGrid';
 import ProductsFilters from '@/components/shop/ProductsFilters';
+import { buildPageMetadata } from '@/lib/seo/metadata';
 
 export const dynamic = 'force-dynamic';
+
+const PAGE_SIZE = 24;
 
 /** Filtros que fuerzan noindex (no incluye page sola). */
 const FILTER_PARAMS = new Set([
@@ -42,61 +47,67 @@ export async function generateMetadata({
     : 'Explora nuestra colección de productos de belleza y cuidado capilar profesional.';
 
   if (hasFilters || isSecondary) {
-    return {
+    return buildPageMetadata({
       title,
       description,
+      path: '/productos',
       robots: { index: false, follow: true },
-    };
+      withCanonical: false,
+    });
   }
 
   const canonicalPath = paginationOnly ? `/productos?page=${pageNum}` : '/productos';
 
-  return {
+  return buildPageMetadata({
     title,
     description,
-    alternates: { canonical: canonicalPath },
+    path: canonicalPath,
     robots: { index: true, follow: true },
-  };
+  });
 }
 
-/** Categorías/marcas del sidebar solo del scope activo (sin mezcla BEAUTY/SECONDARY). */
-async function getFiltersData(scope: 'BEAUTY' | 'SECONDARY') {
-  const productScopeFilter = {
-    isActive: true,
-    catalogScope: scope,
-  } as const;
+/** Categorías/marcas del sidebar solo del scope activo (caché 10 min). */
+const getFiltersData = unstable_cache(
+  async (scope: 'BEAUTY' | 'SECONDARY') => {
+    const productScopeFilter = {
+      isActive: true,
+      catalogScope: scope,
+    } as const;
 
-  const [categories, brands, priceRange] = await Promise.all([
-    prisma.category.findMany({
-      where: {
-        isActive: true,
-        products: { some: productScopeFilter },
-      },
-      orderBy: { name: 'asc' },
-      select: { id: true, name: true, slug: true },
-    }),
-    prisma.brand.findMany({
-      where: {
-        isActive: true,
-        products: { some: productScopeFilter },
-      },
-      orderBy: { name: 'asc' },
-      select: { id: true, name: true, slug: true },
-    }),
-    prisma.product.aggregate({
-      where: productScopeFilter,
-      _min: { basePrice: true },
-      _max: { basePrice: true },
-    }),
-  ]);
+    const [categories, brands, priceRange] = await Promise.all([
+      prisma.category.findMany({
+        where: {
+          isActive: true,
+          products: { some: productScopeFilter },
+        },
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true, slug: true },
+      }),
+      prisma.brand.findMany({
+        where: {
+          isActive: true,
+          products: { some: productScopeFilter },
+        },
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true, slug: true },
+      }),
+      prisma.product.aggregate({
+        where: productScopeFilter,
+        _min: { basePrice: true },
+        _max: { basePrice: true },
+      }),
+    ]);
 
-  return {
-    categories,
-    brands,
-    minPrice: Number(priceRange._min.basePrice || 0),
-    maxPrice: Number(priceRange._max.basePrice || 100000),
-  };
-}
+    return {
+      categories,
+      brands,
+      minPrice: Number(priceRange._min.basePrice || 0),
+      maxPrice: Number(priceRange._max.basePrice || 100000),
+    };
+  },
+  ['product-filters'],
+  { revalidate: 600, tags: ['catalog'] }
+);
 
 export default async function ProductsPage({
   searchParams,
@@ -104,6 +115,20 @@ export default async function ProductsPage({
   searchParams: { [key: string]: string | undefined };
 }) {
   const scope = searchParams.scope === 'secondary' ? 'SECONDARY' : 'BEAUTY';
+  const hasFilters = Object.keys(searchParams || {}).some((k) => FILTER_PARAMS.has(k));
+  const pageNum = Math.max(1, parseInt(searchParams.page || '1', 10) || 1);
+
+  // Soft 404: paginación fuera de rango sin filtros (S6) — a nivel de página, no dentro de Suspense
+  if (!hasFilters && pageNum > 1) {
+    const total = await prisma.product.count({
+      where: { isActive: true, catalogScope: scope },
+    });
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    if (pageNum > totalPages) {
+      notFound();
+    }
+  }
+
   const filtersData = await getFiltersData(scope);
   const isSecondary = scope === 'SECONDARY';
 

@@ -1,11 +1,12 @@
 import InfoPage from '@/components/layout/InfoPage';
+import { buildPageMetadata } from '@/lib/seo/metadata';
 
-export const metadata = {
+export const metadata = buildPageMetadata({
   title: 'Devoluciones',
   description:
     'Política de devoluciones y cambios de DIVINITTYS: plazos, condiciones de higiene y productos dañados.',
-  alternates: { canonical: '/devoluciones' },
-};
+  path: '/devoluciones',
+});
 
 export default function DevolucionesPage() {
   return (

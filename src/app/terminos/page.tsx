@@ -1,11 +1,12 @@
 import InfoPage from '@/components/layout/InfoPage';
+import { buildPageMetadata } from '@/lib/seo/metadata';
 
-export const metadata = {
+export const metadata = buildPageMetadata({
   title: 'Términos y condiciones',
   description:
     'Términos y condiciones de uso de divinittys.cl: precios, stock, promociones y uso del asistente LUNA.',
-  alternates: { canonical: '/terminos' },
-};
+  path: '/terminos',
+});
 
 export default function TerminosPage() {
   return (

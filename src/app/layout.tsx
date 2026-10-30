@@ -26,26 +26,20 @@ export const metadata: Metadata = {
     ],
     apple: [{ url: '/apple-touch-icon.png', sizes: '180x180' }],
   },
+  // openGraph/twitter de página concreta vía buildPageMetadata — no fijar url/title de home aquí (S1)
   openGraph: {
     type: 'website',
     locale: 'es_CL',
-    url: siteUrl,
-    title: 'DIVINITTYS | Productos de Belleza Profesional',
-    description:
-      'Tu tienda online de belleza profesional en Chile. Marcas premium, envío a todo el país.',
     siteName: 'DIVINITTYS',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'DIVINITTYS | Productos de Belleza Profesional',
-    description: 'Tu tienda online de belleza profesional en Chile.',
   },
   robots: {
     index: true,
     follow: true,
     googleBot: { index: true, follow: true, 'max-video-preview': -1, 'max-image-preview': 'large' },
   },
-  // Canónica solo en páginas concretas — no en el layout raíz (B1)
 };
 
 // themeColor único (light): dark gateado por NEXT_PUBLIC_ENABLE_DARK_MODE

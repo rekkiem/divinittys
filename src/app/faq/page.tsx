@@ -1,11 +1,12 @@
 import InfoPage from '@/components/layout/InfoPage';
+import { buildPageMetadata } from '@/lib/seo/metadata';
 
-export const metadata = {
+export const metadata = buildPageMetadata({
   title: 'Preguntas frecuentes',
   description:
     'Respuestas sobre envíos a Chile, envío gratis, Webpay, MercadoPago, devoluciones y el asistente LUNA en DIVINITTYS.',
-  alternates: { canonical: '/faq' },
-};
+  path: '/faq',
+});
 
 const FAQS = [
   {

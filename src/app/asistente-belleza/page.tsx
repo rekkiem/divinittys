@@ -1,12 +1,14 @@
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import BeautyChat from '@/components/ai/BeautyChat';
+import { buildPageMetadata } from '@/lib/seo/metadata';
 
-export const metadata = {
-  alternates: { canonical: '/asistente-belleza' },
+export const metadata = buildPageMetadata({
   title: 'Asistente de Belleza LUNA',
-  description: 'Chatea con LUNA, tu asistente de belleza impulsada por IA. Recibe recomendaciones personalizadas.',
-};
+  description:
+    'Chatea con LUNA, tu asistente de belleza impulsada por IA. Recibe recomendaciones personalizadas.',
+  path: '/asistente-belleza',
+});
 
 export default function BeautyAssistantPage() {
   return (

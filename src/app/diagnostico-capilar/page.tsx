@@ -1,12 +1,14 @@
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import HairDiagnosisForm from '@/components/ai/HairDiagnosisForm';
+import { buildPageMetadata } from '@/lib/seo/metadata';
 
-export const metadata = {
-  alternates: { canonical: '/diagnostico-capilar' },
+export const metadata = buildPageMetadata({
   title: 'Diagnóstico Capilar IA',
-  description: 'Descubre los productos perfectos para tu cabello con nuestro diagnóstico personalizado impulsado por IA.',
-};
+  description:
+    'Descubre los productos perfectos para tu cabello con nuestro diagnóstico personalizado impulsado por IA.',
+  path: '/diagnostico-capilar',
+});
 
 export default function HairDiagnosisPage() {
   return (

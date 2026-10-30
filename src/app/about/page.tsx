@@ -1,11 +1,12 @@
 import InfoPage from '@/components/layout/InfoPage';
+import { buildPageMetadata } from '@/lib/seo/metadata';
 
-export const metadata = {
-  alternates: { canonical: '/about' },
+export const metadata = buildPageMetadata({
   title: 'Sobre Nosotros',
   description:
     'Conoce DIVINITTYS: misión y visión de belleza profesional accesible en Chile. Las mejores marcas, envíos a todo el país.',
-};
+  path: '/about',
+});
 
 export default function AboutPage() {
   return (
