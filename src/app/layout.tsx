@@ -48,11 +48,9 @@ export const metadata: Metadata = {
   // Canónica solo en páginas concretas — no en el layout raíz (B1)
 };
 
+// themeColor único (light): dark gateado por NEXT_PUBLIC_ENABLE_DARK_MODE
 export const viewport: Viewport = {
-  themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#C9956A' },
-    { media: '(prefers-color-scheme: dark)', color: '#1A1A1A' },
-  ],
+  themeColor: '#C9956A',
   width: 'device-width',
   initialScale: 1,
 };

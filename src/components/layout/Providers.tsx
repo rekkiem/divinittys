@@ -20,13 +20,23 @@ const queryClientConfig = {
   },
 };
 
+/** Dark mode UI gate: false en prod hasta tokens/contraste (D1–D3). true en prep para QA. */
+const DARK_ENABLED = process.env.NEXT_PUBLIC_ENABLE_DARK_MODE === 'true';
+
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient(queryClientConfig));
 
   return (
     <SessionProvider basePath="/api/nextauth">
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} storageKey="divinittys-theme">
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="light"
+          enableSystem={false}
+          storageKey="divinittys-theme"
+          forcedTheme={DARK_ENABLED ? undefined : 'light'}
+          disableTransitionOnChange
+        >
           <OAuthSessionBridge />
           {children}
           <BeautyChat />

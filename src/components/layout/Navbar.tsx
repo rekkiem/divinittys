@@ -12,6 +12,8 @@ import SearchModal from './SearchModal';
 import CartDrawer from '../shop/CartDrawer';
 import ThemeToggle from './ThemeToggle';
 
+const DARK_ENABLED = process.env.NEXT_PUBLIC_ENABLE_DARK_MODE === 'true';
+
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -24,7 +26,7 @@ export default function Navbar() {
   const { resolvedTheme } = useTheme();
 
   const cartCount = hydrated ? items.reduce((sum, item) => sum + item.quantity, 0) : 0;
-  const isDark = mounted && resolvedTheme === 'dark';
+  const isDark = DARK_ENABLED && mounted && resolvedTheme === 'dark';
 
   useEffect(() => {
     setHydrated(true);
@@ -61,7 +63,7 @@ export default function Navbar() {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 lg:h-20">
-            {/* Logo brand v3 — light/dark según tema */}
+            {/* Logo brand v3 — light/dark según tema (solo si dark habilitado) */}
             <Link href="/" className="flex items-center gap-2.5 group" aria-label="DIVINITTYS — Inicio">
               <Image
                 src={isDark ? '/brand/icon-dark.png' : '/brand/icon-light.png'}
@@ -96,7 +98,7 @@ export default function Navbar() {
 
             {/* Actions */}
             <div className="flex items-center gap-1 lg:gap-2">
-              <ThemeToggle />
+              {DARK_ENABLED && <ThemeToggle />}
 
               <button
                 onClick={() => setSearchOpen(true)}
