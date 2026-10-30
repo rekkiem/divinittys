@@ -13,6 +13,8 @@ import OffersBanner from '@/components/shop/OffersBanner';
 
 export const dynamic = 'force-dynamic';
 
+const siteUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://divinittys.cl';
+
 export const metadata: Metadata = {
   title: {
     absolute: 'DIVINITTYS | Productos de Belleza Profesional',
@@ -25,6 +27,9 @@ export const metadata: Metadata = {
     title: 'DIVINITTYS | Productos de Belleza Profesional',
     description: 'Tu tienda online de belleza profesional en Chile',
     type: 'website',
+    url: siteUrl,
+    siteName: 'DIVINITTYS',
+    locale: 'es_CL',
   },
 };
 
