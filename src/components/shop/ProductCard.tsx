@@ -120,7 +120,7 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
                 <span className="badge-featured">✦ Destacado</span>
               )}
               {!inStock && (
-                <span className="badge bg-charcoal-500 text-white">Agotado</span>
+                <span className="badge bg-charcoal-500 text-white dark:text-charcoal-700">Agotado</span>
               )}
             </div>
 
@@ -128,7 +128,7 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
             <div className="absolute top-3 right-3 z-20 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
               <button
                 onClick={handleWishlist}
-                className={`w-9 h-9 rounded-full bg-white shadow-md flex items-center justify-center transition-colors ${
+                className={`w-9 h-9 rounded-full bg-card shadow-md flex items-center justify-center transition-colors ${
                   inWishlist ? 'text-rose-500' : 'text-charcoal-400 hover:text-rose-500'
                 }`}
               >
@@ -136,7 +136,7 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
               </button>
               <button
                 onClick={openDetails}
-                className="w-9 h-9 rounded-full bg-white shadow-md flex items-center justify-center text-charcoal-400 hover:text-primary-500 transition-colors"
+                className="w-9 h-9 rounded-full bg-card shadow-md flex items-center justify-center text-charcoal-400 hover:text-primary-500 transition-colors"
                 aria-label={`Abrir ${product.name}`}
               >
                 <Eye className="w-4 h-4" />
