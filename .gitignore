@@ -75,3 +75,6 @@ env.zip
 
 # Respaldos de código con marcas de tiempo en subcarpetas (ej. src/lib/...)
 *.backup-*
+
+pnpm-lock.yaml
+pnpm-workspace.yaml
