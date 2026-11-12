@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
@@ -28,7 +28,7 @@ export default function CheckoutForm() {
   const [firstOrderEnabled, setFirstOrderEnabled] = useState(true);
   const [firstOrderEligible, setFirstOrderEligible] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
-  const eligibilityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [suggestions, setSuggestions] = useState<{ label: string; street?: string; commune?: string; region?: string }[]>([]);
 
   const [form, setForm] = useState({
     name: '', email: '', phone: '',
@@ -41,28 +41,6 @@ export default function CheckoutForm() {
     subtotal >= freeShippingThreshold ||
     (firstOrderEnabled && firstOrderEligible);
   const communes = form.region ? communesForRegion(form.region) : [];
-
-  const checkEligibility = useCallback(async (email?: string) => {
-    if (!firstOrderEnabled) {
-      setFirstOrderEligible(false);
-      return;
-    }
-    try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-      const qs = email ? `?email=${encodeURIComponent(email)}` : '';
-      const res = await fetch(`/api/shipping/first-order-eligibility${qs}`, {
-        credentials: 'include',
-        headers,
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      const eligible = !!(data?.data?.eligible ?? data?.eligible);
-      setFirstOrderEligible(eligible);
-    } catch {
-      /* ignore */
-    }
-  }, [accessToken, firstOrderEnabled]);
 
   useEffect(() => {
     fetch('/api/settings/public')
@@ -112,28 +90,32 @@ export default function CheckoutForm() {
             region: f.region || src?.region || '',
             postalCode: f.postalCode || src?.postalCode || '',
           }));
-        } else {
-          checkEligibility();
         }
       } catch { /* guest */ }
     };
     load();
-  }, [accessToken, checkEligibility]);
-
-  useEffect(() => {
-    if (!firstOrderEnabled) return;
-    const email = form.email.trim();
-    if (!email || !email.includes('@')) return;
-    if (eligibilityTimer.current) clearTimeout(eligibilityTimer.current);
-    eligibilityTimer.current = setTimeout(() => {
-      checkEligibility(email);
-    }, 500);
-    return () => {
-      if (eligibilityTimer.current) clearTimeout(eligibilityTimer.current);
-    };
-  }, [form.email, firstOrderEnabled, checkEligibility]);
+  }, [accessToken]);
 
   const update = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  /** B3: solo POST + onBlur (no debounce por tecleo). Auth usa /api/auth/me. */
+  const onEmailBlur = async () => {
+    if (!firstOrderEnabled) return;
+    if (accessToken) return;
+    const email = form.email.trim();
+    if (!email || !email.includes('@')) return;
+    try {
+      const res = await fetch('/api/shipping/first-order-eligibility', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setFirstOrderEligible(!!(data?.data?.eligible ?? data?.eligible));
+    } catch { /* ignore */ }
+  };
 
   const applySaved = (a: SavedAddress) => {
     setForm((f) => ({
@@ -215,7 +197,14 @@ export default function CheckoutForm() {
         }),
       });
       const orderData = await orderRes.json();
-      if (!orderRes.ok) throw new Error(orderData.error || 'No se pudo crear el pedido');
+      if (!orderRes.ok) {
+        if (orderRes.status === 409) {
+          setFirstOrderEligible(false);
+          toast.error(orderData.error || 'El beneficio de primera compra ya no está disponible. Cotiza el envío e intenta de nuevo.');
+          return;
+        }
+        throw new Error(orderData.error || 'No se pudo crear el pedido');
+      }
       const orderId = orderData.data?.order?.id;
       if (!orderId) throw new Error('Order creation failed');
 
@@ -241,6 +230,8 @@ export default function CheckoutForm() {
         document.body.appendChild(formEl);
         formEl.submit();
       } else if (paymentMethod === 'MERCADOPAGO') {
+        // Preferir la URL ya resuelta por el backend (init_point).
+        // No priorizar sandboxInitPoint: con token APP_USR debe ir a producción.
         const url = payData.data?.init_point || payData.data?.initPoint;
         if (!url) throw new Error('No se pudo iniciar el pago con MercadoPago.');
         window.location.href = url;
@@ -309,7 +300,7 @@ export default function CheckoutForm() {
             </div>
             <div>
               <label className="block font-sans text-xs font-semibold text-charcoal-500 mb-1.5">Email</label>
-              <input type="email" value={form.email} onChange={(e) => update('email', e.target.value)} placeholder="email@ejemplo.com" className="input-field" />
+              <input type="email" value={form.email} onChange={(e) => update('email', e.target.value)} onBlur={onEmailBlur} placeholder="email@ejemplo.com" className="input-field" />
             </div>
             <div>
               <label className="block font-sans text-xs font-semibold text-charcoal-500 mb-1.5">Teléfono</label>
@@ -381,7 +372,7 @@ export default function CheckoutForm() {
           </h3>
           <div className="grid sm:grid-cols-2 gap-4">
             {[
-              { id: 'WEBPAY', label: 'Webpay Plus', sub: 'Débito/Crédito/Cuotas', badge: 'Recomendado' },
+              { id: 'WEBPAY', label: 'Webpay Plus', sub: 'Transbank · Débito/Crédito/Cuotas', badge: 'Recomendado' },
               { id: 'MERCADOPAGO', label: 'MercadoPago', sub: 'Débito/Crédito/Transferencia', badge: '' },
             ].map((method) => (
               <button key={method.id} onClick={() => setPaymentMethod(method.id as any)}
@@ -437,25 +428,15 @@ export default function CheckoutForm() {
             </div>
             <div className="flex justify-between font-sans text-sm text-charcoal-500">
               <span>Envío</span>
-              <span>
-                {qualifiesFree
-                  ? (showFirstOrderBanner ? 'Gratis (1ª compra)' : 'Gratis')
-                  : shipping > 0
-                    ? formatCLP(shipping)
-                    : 'Por calcular'}
-              </span>
+              <span>{qualifiesFree ? (showFirstOrderBanner ? 'Gratis (1ª compra)' : 'Gratis') : shipping > 0 ? formatCLP(shipping) : 'Por calcular'}</span>
             </div>
             <div className="flex justify-between font-sans font-bold text-charcoal-700 text-lg border-t border-champagne-100 pt-2">
               <span>Total</span><span className="text-primary-600">{formatCLP(orderTotal)}</span>
             </div>
           </div>
-          <button
-            onClick={placeOrder}
-            disabled={loading || !form.name || !form.email || !form.phone || !form.street || !form.number || !form.commune || !form.region || (!qualifiesFree && !shippingQuote)}
-            className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-60"
-          >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-            {loading ? 'Procesando...' : 'Pagar ahora'}
+          <button onClick={placeOrder} disabled={loading || !form.name || !form.email || !form.street || !form.commune || !form.region}
+            className="w-full btn-primary flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+            {loading ? (<><Loader2 className="w-4 h-4 animate-spin" /> Procesando...</>) : (<><CreditCard className="w-4 h-4" /> Pagar {formatCLP(orderTotal)}</>)}
           </button>
         </div>
       </div>
