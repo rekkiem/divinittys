@@ -19,4 +19,5 @@ export const PUBLIC_SETTING_KEYS = [
   'store_name',
   'currency',
   'min_order_amount',
+  'first_order_free_shipping',
 ] as const;
