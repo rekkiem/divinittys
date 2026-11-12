@@ -30,6 +30,7 @@ const FIELD_GROUPS = [
     title: 'Envíos', icon: Truck,
     fields: [
       { key: 'free_shipping_threshold', label: 'Envío gratis desde (CLP)', placeholder: '50000', type: 'number' },
+      { key: 'first_order_free_shipping', label: 'Envío gratis en 1ª compra (true/false)', placeholder: 'true', type: 'text' },
       { key: 'shipping_message',        label: 'Mensaje de envío',         placeholder: 'Envíos a todo Chile en 24-48hrs', type: 'text' },
     ],
   },
@@ -125,6 +126,11 @@ export default function ConfiguracionClient({ initialSettings }: { initialSettin
                 {type === 'number' && settings[key] && key.includes('threshold') && (
                   <p className="font-sans text-xs text-charcoal-400 mt-1">
                     = {formatCLP(Number(settings[key]))}
+                  </p>
+                )}
+                {key === 'first_order_free_shipping' && (
+                  <p className="font-sans text-xs text-charcoal-400 mt-1">
+                    true = activo · false = desactivado. Solo aplica a la primera orden pagada (user o guest por email).
                   </p>
                 )}
               </div>
