@@ -314,6 +314,9 @@ model Order {
   guestName       String?
   guestPhone      String?
 
+  /// True when this order consumed the first-order free-shipping benefit.
+  firstOrderFreeShipping Boolean @default(false)
+
   shippingData    Json?
 
   notes           String?
@@ -330,6 +333,7 @@ model Order {
   @@index([userId])
   @@index([orderNumber])
   @@index([status])
+  @@index([guestEmail])
   @@map("orders")
 }
 
