@@ -5,6 +5,7 @@ import { getAuthUser } from '@/lib/auth';
 import { ok, created, badRequest, unauthorized, serverError, generateOrderNumber } from '@/lib/utils/api';
 import { quoteBluexpress, calculatePackageFromOrder } from '@/lib/shipping/bluexpress';
 import { getFreeShippingThreshold } from '@/lib/shipping/free-shipping';
+import { isEligibleForFirstOrderFreeShipping } from '@/lib/shipping/first-order-free';
 import { isValidChileCommune } from '@/lib/chile/geo';
 
 const MAX_SHIPPING_CLP = 15000;
@@ -113,8 +114,29 @@ export async function POST(req: NextRequest) {
     }
 
     const freeShippingThreshold = await getFreeShippingThreshold();
-    const freeShipping = freeShippingCoupon || subtotal >= freeShippingThreshold;
-    const shipping = await resolveShippingAmount({ clientAmount: data.shippingAmount, shippingService: data.shippingService, shippingData: data.shippingData, items: data.items, freeShipping });
+    const firstOrderEligible = await isEligibleForFirstOrderFreeShipping({
+      userId: user?.id,
+      email: data.shippingData.email,
+    });
+    const freeShipping =
+      freeShippingCoupon ||
+      subtotal >= freeShippingThreshold ||
+      firstOrderEligible;
+    const shipping = await resolveShippingAmount({
+      clientAmount: data.shippingAmount,
+      shippingService: data.shippingService,
+      shippingData: data.shippingData,
+      items: data.items,
+      freeShipping,
+    });
+    // Distinguir origen del free para auditoría
+    let shippingSource = shipping.source;
+    if (freeShipping && shipping.amount === 0) {
+      if (freeShippingCoupon) shippingSource = 'free_coupon';
+      else if (firstOrderEligible && subtotal < freeShippingThreshold) shippingSource = 'first_order';
+      else if (subtotal >= freeShippingThreshold) shippingSource = 'free_threshold';
+      else shippingSource = 'free';
+    }
     const shippingAmount = shipping.amount;
     const total = subtotal - discountAmount + shippingAmount;
 
@@ -184,7 +206,7 @@ export async function POST(req: NextRequest) {
           guestPhone: !user ? data.shippingData.phone : undefined,
           shippingData: data.shippingData, // snapshot inmutable
           couponCode: data.couponCode,
-          notes: [data.notes, data.shippingService ? `Envío: ${data.shippingService}` : null, `shipping_source=${shipping.source}`].filter(Boolean).join(' | '),
+          notes: [data.notes, data.shippingService ? `Envío: ${data.shippingService}` : null, `shipping_source=${shippingSource}`].filter(Boolean).join(' | '),
           items: { create: orderItems },
           payment: { create: { provider: 'WEBPAY', status: 'PENDING', amount: total, currency: 'CLP' } },
         },
@@ -229,7 +251,7 @@ export async function POST(req: NextRequest) {
       return newOrder;
     });
 
-    return created({ order, shippingSource: shipping.source });
+    return created({ order, shippingSource, firstOrderFreeShipping: firstOrderEligible && shippingAmount === 0 });
   } catch (error) {
     if (error instanceof z.ZodError) return badRequest('Datos inválidos', error.errors);
     return serverError(error);
