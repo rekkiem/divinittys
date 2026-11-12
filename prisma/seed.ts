@@ -80,6 +80,7 @@ async function main() {
   console.log(`  ✓ ${brands.length} brands seeded`);
 
   // ── Settings ─────────────────────────────────────────────
+  // B2: solo CREAR claves faltantes. Nunca sobrescribir valores de prod/admin.
   const settings = [
     { key: 'store_name',               value: 'DIVINITTYS',          type: 'string' },
     { key: 'store_email',              value: 'hola@divinittys.cl',  type: 'string' },
@@ -94,11 +95,11 @@ async function main() {
   for (const setting of settings) {
     await prisma.setting.upsert({
       where: { key: setting.key },
-      update: { value: setting.value },
+      update: {},
       create: setting,
     });
   }
-  console.log(`  ✓ ${settings.length} settings seeded`);
+  console.log(`  ✓ ${settings.length} settings seeded (create-only)`);
   console.log('\n✅ Seed complete!');
   console.log('─────────────────────────────────────────');
   console.log(`  Admin email: ${adminEmail}`);
