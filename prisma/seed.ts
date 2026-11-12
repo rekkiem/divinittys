@@ -87,6 +87,7 @@ async function main() {
     { key: 'store_address',            value: 'Santiago, Chile',      type: 'string' },
     { key: 'currency',                 value: 'CLP',                  type: 'string' },
     { key: 'free_shipping_threshold',  value: '29990',                type: 'number' },
+    { key: 'first_order_free_shipping', value: 'true',                type: 'boolean' },
     { key: 'tax_rate',                 value: '0.19',                 type: 'number' },
     { key: 'maintenance_mode',         value: 'false',                type: 'boolean' },
   ];
