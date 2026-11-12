@@ -11,6 +11,7 @@ export async function GET() {
     });
     const settings = Object.fromEntries(rows.map((s: { key: string; value: string }) => [s.key, s.value]));
     if (!settings.free_shipping_threshold) settings.free_shipping_threshold = '29990';
+    if (settings.first_order_free_shipping === undefined) settings.first_order_free_shipping = 'true';
     return ok({ settings });
   } catch (e) {
     return serverError(e);
