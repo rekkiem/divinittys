@@ -40,7 +40,6 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
     <AnimatePresence>
       {open && (
         <>
-          {/* Backdrop */}
           <motion.div
             className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
             initial={{ opacity: 0 }}
@@ -49,7 +48,6 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
             onClick={onClose}
           />
 
-          {/* Drawer */}
           <motion.div
             className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-md bg-background flex flex-col shadow-2xl"
             initial={{ x: '100%' }}
@@ -57,7 +55,6 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
             exit={{ x: '100%' }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
           >
-            {/* Header */}
             <div className="flex items-center justify-between p-6 border-b border-border">
               <div className="flex items-center gap-3">
                 <ShoppingBag className="w-5 h-5 text-primary-500" />
@@ -76,7 +73,6 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
               </button>
             </div>
 
-            {/* Free shipping progress */}
             {items.length > 0 && (
               <div className="px-6 py-3 bg-champagne-50 border-b border-champagne-200">
                 {qualifiesFree ? (
@@ -96,7 +92,7 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                     </div>
                     {firstOrderEnabled && (
                       <p className="font-sans text-xs text-emerald-700 mt-2 font-medium">
-                        Envío gratis en tu primera compra
+                        Envío gratis en tu primera compra · clientes nuevos
                       </p>
                     )}
                   </>
@@ -104,7 +100,6 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
               </div>
             )}
 
-            {/* Items */}
             <div className="flex-1 overflow-y-auto py-4">
               {items.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full gap-4 px-6 text-center">
@@ -179,7 +174,6 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
               )}
             </div>
 
-            {/* Footer */}
             {items.length > 0 && (
               <div className="border-t border-border p-6 space-y-4 bg-background">
                 <div className="flex justify-between items-center">
