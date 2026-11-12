@@ -16,14 +16,18 @@ type CartDrawerProps = {
 export default function CartDrawer({ open, onClose }: CartDrawerProps) {
   const { items, updateQuantity, removeItem, subtotal, count } = useCartStore();
   const [freeShippingThreshold, setFreeShippingThreshold] = useState(29990);
+  const [firstOrderEnabled, setFirstOrderEnabled] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     fetch('/api/settings/public')
       .then((r) => r.json())
       .then((d) => {
-        const n = Number(d?.data?.settings?.free_shipping_threshold ?? d?.settings?.free_shipping_threshold);
+        const settings = d?.data?.settings ?? d?.settings ?? {};
+        const n = Number(settings.free_shipping_threshold);
         if (!cancelled && Number.isFinite(n) && n >= 0) setFreeShippingThreshold(n);
+        const fo = String(settings.first_order_free_shipping ?? 'true').toLowerCase();
+        if (!cancelled) setFirstOrderEnabled(fo === 'true' || fo === '1' || fo === 'yes');
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -90,6 +94,11 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                         style={{ width: `${Math.min((subtotal / Math.max(freeShippingThreshold, 1)) * 100, 100)}%` }}
                       />
                     </div>
+                    {firstOrderEnabled && (
+                      <p className="font-sans text-xs text-emerald-700 mt-2 font-medium">
+                        Envío gratis en tu primera compra
+                      </p>
+                    )}
                   </>
                 )}
               </div>
