@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
-import { Truck, CreditCard, MapPin, User, Loader2, ShieldCheck } from 'lucide-react';
+import { Truck, CreditCard, MapPin, User, Loader2, ShieldCheck, Gift } from 'lucide-react';
 import { useCartStore } from '@/hooks/useCart';
 import { formatCLP } from '@/lib/utils/api';
 import { CHILE_REGION_NAMES, communesForRegion } from '@/lib/chile/geo';
@@ -25,8 +25,10 @@ export default function CheckoutForm() {
   const [quoting, setQuoting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'WEBPAY' | 'MERCADOPAGO'>('WEBPAY');
   const [freeShippingThreshold, setFreeShippingThreshold] = useState(29990);
+  const [firstOrderEnabled, setFirstOrderEnabled] = useState(true);
+  const [firstOrderEligible, setFirstOrderEligible] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
-  const [suggestions, setSuggestions] = useState<{ label: string; street?: string; commune?: string; region?: string }[]>([]);
+  const eligibilityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [form, setForm] = useState({
     name: '', email: '', phone: '',
@@ -35,15 +37,42 @@ export default function CheckoutForm() {
   });
 
   const subtotal = total();
-  const qualifiesFree = subtotal >= freeShippingThreshold;
+  const qualifiesFree =
+    subtotal >= freeShippingThreshold ||
+    (firstOrderEnabled && firstOrderEligible);
   const communes = form.region ? communesForRegion(form.region) : [];
+
+  const checkEligibility = useCallback(async (email?: string) => {
+    if (!firstOrderEnabled) {
+      setFirstOrderEligible(false);
+      return;
+    }
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+      const qs = email ? `?email=${encodeURIComponent(email)}` : '';
+      const res = await fetch(`/api/shipping/first-order-eligibility${qs}`, {
+        credentials: 'include',
+        headers,
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const eligible = !!(data?.data?.eligible ?? data?.eligible);
+      setFirstOrderEligible(eligible);
+    } catch {
+      /* ignore */
+    }
+  }, [accessToken, firstOrderEnabled]);
 
   useEffect(() => {
     fetch('/api/settings/public')
       .then((r) => r.json())
       .then((d) => {
-        const n = Number(d?.data?.settings?.free_shipping_threshold ?? d?.settings?.free_shipping_threshold);
+        const settings = d?.data?.settings ?? d?.settings ?? {};
+        const n = Number(settings.free_shipping_threshold);
         if (Number.isFinite(n) && n >= 0) setFreeShippingThreshold(n);
+        const fo = String(settings.first_order_free_shipping ?? 'true').toLowerCase();
+        setFirstOrderEnabled(fo === 'true' || fo === '1' || fo === 'yes');
       })
       .catch(() => {});
   }, []);
@@ -65,6 +94,9 @@ export default function CheckoutForm() {
           const addresses = payload.addresses || [];
           const last = payload.lastShipping || {};
           setSavedAddresses(addresses);
+          if (typeof payload.firstOrderEligible === 'boolean') {
+            setFirstOrderEligible(payload.firstOrderEligible);
+          }
           const def = addresses.find((a: any) => a.isDefault) || addresses[0];
           const src = def || last;
           setForm((f) => ({
@@ -80,11 +112,26 @@ export default function CheckoutForm() {
             region: f.region || src?.region || '',
             postalCode: f.postalCode || src?.postalCode || '',
           }));
+        } else {
+          checkEligibility();
         }
       } catch { /* guest */ }
     };
     load();
-  }, [accessToken]);
+  }, [accessToken, checkEligibility]);
+
+  useEffect(() => {
+    if (!firstOrderEnabled) return;
+    const email = form.email.trim();
+    if (!email || !email.includes('@')) return;
+    if (eligibilityTimer.current) clearTimeout(eligibilityTimer.current);
+    eligibilityTimer.current = setTimeout(() => {
+      checkEligibility(email);
+    }, 500);
+    return () => {
+      if (eligibilityTimer.current) clearTimeout(eligibilityTimer.current);
+    };
+  }, [form.email, firstOrderEnabled, checkEligibility]);
 
   const update = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -194,8 +241,6 @@ export default function CheckoutForm() {
         document.body.appendChild(formEl);
         formEl.submit();
       } else if (paymentMethod === 'MERCADOPAGO') {
-        // Preferir la URL ya resuelta por el backend (init_point).
-        // No priorizar sandboxInitPoint: con token APP_USR debe ir a producción.
         const url = payData.data?.init_point || payData.data?.initPoint;
         if (!url) throw new Error('No se pudo iniciar el pago con MercadoPago.');
         window.location.href = url;
@@ -220,10 +265,25 @@ export default function CheckoutForm() {
 
   const shipping = qualifiesFree ? 0 : (shippingQuote?.price || 0);
   const orderTotal = subtotal + shipping;
+  const showFirstOrderBanner = firstOrderEnabled && firstOrderEligible && subtotal < freeShippingThreshold;
 
   return (
     <div className="grid lg:grid-cols-3 gap-8">
       <div className="lg:col-span-2 space-y-6">
+        {showFirstOrderBanner && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-start gap-3">
+            <Gift className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-sans text-sm font-semibold text-emerald-800">
+                Envío gratis en tu primera compra
+              </p>
+              <p className="font-sans text-xs text-emerald-700 mt-0.5">
+                Beneficio exclusivo para clientes nuevos. Se aplica automáticamente al confirmar el pedido.
+              </p>
+            </div>
+          </div>
+        )}
+
         {savedAddresses.length > 0 && (
           <div className="bg-white rounded-2xl border border-champagne-200 p-4">
             <p className="font-sans text-xs font-semibold text-charcoal-500 mb-2">Direcciones guardadas</p>
@@ -321,7 +381,7 @@ export default function CheckoutForm() {
           </h3>
           <div className="grid sm:grid-cols-2 gap-4">
             {[
-              { id: 'WEBPAY', label: 'Webpay Plus', sub: 'Transbank · Débito/Crédito/Cuotas', badge: 'Recomendado' },
+              { id: 'WEBPAY', label: 'Webpay Plus', sub: 'Débito/Crédito/Cuotas', badge: 'Recomendado' },
               { id: 'MERCADOPAGO', label: 'MercadoPago', sub: 'Débito/Crédito/Transferencia', badge: '' },
             ].map((method) => (
               <button key={method.id} onClick={() => setPaymentMethod(method.id as any)}
@@ -377,15 +437,25 @@ export default function CheckoutForm() {
             </div>
             <div className="flex justify-between font-sans text-sm text-charcoal-500">
               <span>Envío</span>
-              <span>{qualifiesFree ? 'Gratis' : shipping > 0 ? formatCLP(shipping) : 'Por calcular'}</span>
+              <span>
+                {qualifiesFree
+                  ? (showFirstOrderBanner ? 'Gratis (1ª compra)' : 'Gratis')
+                  : shipping > 0
+                    ? formatCLP(shipping)
+                    : 'Por calcular'}
+              </span>
             </div>
             <div className="flex justify-between font-sans font-bold text-charcoal-700 text-lg border-t border-champagne-100 pt-2">
               <span>Total</span><span className="text-primary-600">{formatCLP(orderTotal)}</span>
             </div>
           </div>
-          <button onClick={placeOrder} disabled={loading || !form.name || !form.email || !form.street || !form.commune || !form.region}
-            className="w-full btn-primary flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-            {loading ? (<><Loader2 className="w-4 h-4 animate-spin" /> Procesando...</>) : (<><CreditCard className="w-4 h-4" /> Pagar {formatCLP(orderTotal)}</>)}
+          <button
+            onClick={placeOrder}
+            disabled={loading || !form.name || !form.email || !form.phone || !form.street || !form.number || !form.commune || !form.region || (!qualifiesFree && !shippingQuote)}
+            className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-60"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            {loading ? 'Procesando...' : 'Pagar ahora'}
           </button>
         </div>
       </div>
