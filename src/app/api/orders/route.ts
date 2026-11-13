@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getAuthUser } from '@/lib/auth';
 import { ok, created, badRequest, unauthorized, serverError, conflict, generateOrderNumber } from '@/lib/utils/api';
@@ -287,7 +286,7 @@ export async function POST(req: NextRequest) {
       }
 
       return { order: newOrder, shippingSource, isFirstOrderBenefit };
-    });
+    }, { timeout: 20000, maxWait: 5000 });
 
     return created({
       order: order.order,
