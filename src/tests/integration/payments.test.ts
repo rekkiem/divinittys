@@ -24,6 +24,7 @@ vi.mock('@/lib/payments/mercadopago', () => ({
     init_point: 'https://sandbox.mercadopago.cl/checkout?pref_id=MP-PREF-123',
     sandbox_init_point: 'https://sandbox.mercadopago.cl/checkout?pref_id=MP-PREF-123',
   }),
+  isSandbox: vi.fn().mockReturnValue(true),
 }));
 
 const ORDER = {
@@ -41,6 +42,31 @@ function req(action: string, body: object) {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+/** Mock de cliente transaccional usado por markPaymentPaid / markPaymentFailed */
+function makeTxMock(overrides: Record<string, unknown> = {}) {
+  return {
+    payment: {
+      findUnique: vi.fn().mockResolvedValue({ id: PAY.id, status: 'PROCESSING' }),
+      update: vi.fn().mockResolvedValue({}),
+    },
+    order: {
+      findUnique: vi.fn().mockResolvedValue({ id: ORDER.id, couponCode: null }),
+      update: vi.fn().mockResolvedValue({}),
+    },
+    orderItem: { findMany: vi.fn().mockResolvedValue([]) },
+    inventory: {
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      upsert: vi.fn().mockResolvedValue({}),
+    },
+    productVariant: {
+      findMany: vi.fn().mockResolvedValue([]),
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
+    coupon: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+    ...overrides,
+  };
 }
 
 // ── webpay-init ───────────────────────────────────────────────────
@@ -86,17 +112,7 @@ describe('webpay-commit', () => {
     vi.mocked(prisma.payment.findFirst).mockResolvedValue(PAY as any);
     vi.mocked(prisma.$transaction).mockImplementation(async (fn: any) => {
       if (typeof fn !== 'function') return Promise.all(fn);
-      const tx = {
-        payment:   {
-          findUnique: vi.fn().mockResolvedValue({ id: PAY.id, status: 'PROCESSING' }),
-          update: vi.fn().mockResolvedValue({}),
-        },
-        order:     { update: vi.fn().mockResolvedValue({}) },
-        orderItem: { findMany: vi.fn().mockResolvedValue([]) },
-        inventory: { updateMany: vi.fn().mockResolvedValue({}) },
-        productVariant: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
-      };
-      return fn(tx);
+      return fn(makeTxMock());
     });
     const res = await POST(req('webpay-commit', { token_ws: 'tbk-token-123' }));
     expect(res.status).toBe(200);
@@ -111,17 +127,7 @@ describe('webpay-commit', () => {
     vi.mocked(prisma.payment.findFirst).mockResolvedValue(PAY as any);
     vi.mocked(prisma.$transaction).mockImplementation(async (fn: any) => {
       if (typeof fn !== 'function') return Promise.all(fn);
-      const tx = {
-        payment:   {
-          findUnique: vi.fn().mockResolvedValue({ id: PAY.id, status: 'PROCESSING' }),
-          update: vi.fn().mockResolvedValue({}),
-        },
-        order:     { update: vi.fn().mockResolvedValue({}) },
-        orderItem: { findMany: vi.fn().mockResolvedValue([]) },
-        inventory: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
-        productVariant: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
-      };
-      return fn(tx);
+      return fn(makeTxMock());
     });
     const res = await POST(req('webpay-commit', { token_ws: 'tbk-token-123' }));
     expect(res.status).toBe(200);
