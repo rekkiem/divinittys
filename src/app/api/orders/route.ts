@@ -2,13 +2,22 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { getAuthUser } from '@/lib/auth';
-import { ok, created, badRequest, unauthorized, serverError, generateOrderNumber } from '@/lib/utils/api';
+import { ok, created, badRequest, unauthorized, serverError, conflict, generateOrderNumber } from '@/lib/utils/api';
 import { quoteBluexpress, calculatePackageFromOrder } from '@/lib/shipping/bluexpress';
 import { getFreeShippingThreshold } from '@/lib/shipping/free-shipping';
+import { isEligibleForFirstOrderFreeShipping } from '@/lib/shipping/first-order-free';
 import { isValidChileCommune } from '@/lib/chile/geo';
+import { sanitizeEmail } from '@/lib/security/sanitize';
 
 const MAX_SHIPPING_CLP = 15000;
 const SHIPPING_TOLERANCE = 0.15;
+
+class FirstOrderBenefitTakenError extends Error {
+  constructor() {
+    super('El beneficio de primera compra ya fue utilizado en otro pedido pendiente');
+    this.name = 'FirstOrderBenefitTakenError';
+  }
+}
 
 const createOrderSchema = z.object({
   items: z.array(z.object({ productId: z.string(), variantId: z.string().optional(), quantity: z.number().int().min(1) })).min(1),
@@ -75,6 +84,7 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getAuthUser(req);
     const data = createOrderSchema.parse(await req.json());
+    const normalizedEmail = sanitizeEmail(data.shippingData.email);
     if (!isValidChileCommune(data.shippingData.region, data.shippingData.commune)) {
       return badRequest('La comuna no corresponde a la región. Revisa la dirección de envío.');
     }
@@ -113,13 +123,64 @@ export async function POST(req: NextRequest) {
     }
 
     const freeShippingThreshold = await getFreeShippingThreshold();
-    const freeShipping = freeShippingCoupon || subtotal >= freeShippingThreshold;
-    const shipping = await resolveShippingAmount({ clientAmount: data.shippingAmount, shippingService: data.shippingService, shippingData: data.shippingData, items: data.items, freeShipping });
-    const shippingAmount = shipping.amount;
-    const total = subtotal - discountAmount + shippingAmount;
+
+    // Pre-check (UX). Source of truth is inside the transaction with advisory lock.
+    let firstOrderEligible = await isEligibleForFirstOrderFreeShipping({
+      userId: user?.id,
+      email: normalizedEmail,
+    });
 
     const order = await prisma.$transaction(async (tx: any) => {
-      // ─── Dirección formal (User 1→N Address, Order N→1 Address) ───
+      // B1: serializar por email (y userId) para evitar doble consumo concurrente
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${normalizedEmail}))`;
+      if (user?.id) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'uid:' + user.id}))`;
+      }
+
+      // Re-evaluar elegibilidad con el cliente transaccional
+      firstOrderEligible = await isEligibleForFirstOrderFreeShipping({
+        userId: user?.id,
+        email: normalizedEmail,
+        db: tx,
+      });
+
+      // Si el cliente pidió first-order free pero ya no aplica → 409
+      const clientClaimedFirstOrder =
+        typeof data.shippingAmount === 'number' &&
+        data.shippingAmount === 0 &&
+        !freeShippingCoupon &&
+        subtotal < freeShippingThreshold;
+
+      if (clientClaimedFirstOrder && !firstOrderEligible) {
+        throw new FirstOrderBenefitTakenError();
+      }
+
+      const freeShipping =
+        freeShippingCoupon ||
+        subtotal >= freeShippingThreshold ||
+        firstOrderEligible;
+
+      const shipping = await resolveShippingAmount({
+        clientAmount: data.shippingAmount,
+        shippingService: data.shippingService,
+        shippingData: data.shippingData,
+        items: data.items,
+        freeShipping,
+      });
+
+      let shippingSource = shipping.source;
+      if (freeShipping && shipping.amount === 0) {
+        if (freeShippingCoupon) shippingSource = 'free_coupon';
+        else if (firstOrderEligible && subtotal < freeShippingThreshold) shippingSource = 'first_order';
+        else if (subtotal >= freeShippingThreshold) shippingSource = 'free_threshold';
+        else shippingSource = 'free';
+      }
+
+      const shippingAmount = shipping.amount;
+      const total = subtotal - discountAmount + shippingAmount;
+      const isFirstOrderBenefit = shippingSource === 'first_order';
+
+      // ─── Dirección formal ───
       let resolvedAddressId: string | null = null;
 
       if (user?.id) {
@@ -135,20 +196,17 @@ export async function POST(req: NextRequest) {
           phone: data.shippingData.phone,
         };
 
-        // Si el cliente envió addressId de una dirección existente, validar ownership
         if (data.addressId) {
           const owned = await tx.address.findFirst({
             where: { id: data.addressId, userId: user.id },
           });
           if (owned) {
-            // Actualizar datos por si cambió algo en el form
             await tx.address.update({ where: { id: owned.id }, data: addrPayload });
             resolvedAddressId = owned.id;
           }
         }
 
         if (!resolvedAddressId) {
-          // Upsert de la dirección default del usuario
           const existing = await tx.address.findFirst({
             where: { userId: user.id, isDefault: true },
           });
@@ -156,7 +214,7 @@ export async function POST(req: NextRequest) {
             await tx.address.update({ where: { id: existing.id }, data: addrPayload });
             resolvedAddressId = existing.id;
           } else {
-            const created = await tx.address.create({
+            const createdAddr = await tx.address.create({
               data: {
                 userId: user.id,
                 label: 'Casa',
@@ -164,7 +222,7 @@ export async function POST(req: NextRequest) {
                 ...addrPayload,
               },
             });
-            resolvedAddressId = created.id;
+            resolvedAddressId = createdAddr.id;
           }
         }
       }
@@ -173,18 +231,19 @@ export async function POST(req: NextRequest) {
         data: {
           orderNumber: generateOrderNumber(),
           userId: user?.id,
-          addressId: resolvedAddressId, // ← relación formal
+          addressId: resolvedAddressId,
           status: 'PENDING',
           subtotal,
           discountAmount,
           shippingAmount,
           total,
-          guestEmail: !user ? data.shippingData.email : undefined,
+          guestEmail: !user ? normalizedEmail : undefined,
           guestName: !user ? `${data.shippingData.firstName} ${data.shippingData.lastName}`.trim() : undefined,
           guestPhone: !user ? data.shippingData.phone : undefined,
-          shippingData: data.shippingData, // snapshot inmutable
+          firstOrderFreeShipping: isFirstOrderBenefit,
+          shippingData: { ...data.shippingData, email: normalizedEmail },
           couponCode: data.couponCode,
-          notes: [data.notes, data.shippingService ? `Envío: ${data.shippingService}` : null, `shipping_source=${shipping.source}`].filter(Boolean).join(' | '),
+          notes: [data.notes, data.shippingService ? `Envío: ${data.shippingService}` : null, `shipping_source=${shippingSource}`].filter(Boolean).join(' | '),
           items: { create: orderItems },
           payment: { create: { provider: 'WEBPAY', status: 'PENDING', amount: total, currency: 'CLP' } },
         },
@@ -226,11 +285,18 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      return newOrder;
-    });
+      return { order: newOrder, shippingSource, isFirstOrderBenefit };
+    }, { timeout: 20000, maxWait: 5000 });
 
-    return created({ order, shippingSource: shipping.source });
+    return created({
+      order: order.order,
+      shippingSource: order.shippingSource,
+      firstOrderFreeShipping: order.isFirstOrderBenefit,
+    });
   } catch (error) {
+    if (error instanceof FirstOrderBenefitTakenError) {
+      return conflict(error.message);
+    }
     if (error instanceof z.ZodError) return badRequest('Datos inválidos', error.errors);
     return serverError(error);
   }
