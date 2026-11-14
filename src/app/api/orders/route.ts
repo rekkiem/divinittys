@@ -124,12 +124,6 @@ export async function POST(req: NextRequest) {
 
     const freeShippingThreshold = await getFreeShippingThreshold();
 
-    // Pre-check (UX). Source of truth is inside the transaction with advisory lock.
-    let firstOrderEligible = await isEligibleForFirstOrderFreeShipping({
-      userId: user?.id,
-      email: normalizedEmail,
-    });
-
     const order = await prisma.$transaction(async (tx: any) => {
       // B1: serializar por email (y userId) para evitar doble consumo concurrente
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${normalizedEmail}))`;
@@ -137,8 +131,8 @@ export async function POST(req: NextRequest) {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'uid:' + user.id}))`;
       }
 
-      // Re-evaluar elegibilidad con el cliente transaccional
-      firstOrderEligible = await isEligibleForFirstOrderFreeShipping({
+      // Única evaluación de elegibilidad: dentro de la transacción y con el lock tomado
+      const firstOrderEligible = await isEligibleForFirstOrderFreeShipping({
         userId: user?.id,
         email: normalizedEmail,
         db: tx,
