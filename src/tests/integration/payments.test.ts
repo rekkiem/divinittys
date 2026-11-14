@@ -18,6 +18,13 @@ vi.mock('@/lib/payments/webpay', () => ({
   }),
 }));
 
+// markPaymentPaid encola el fulfillment en BullMQ tras el commit. Sin este mock el test
+// intenta conectar a Redis (127.0.0.1:6379) y se cuelga si no hay uno corriendo (p. ej. en el
+// job "Unit & Integration Tests" del CI, que no levanta el servicio Redis).
+vi.mock('@/lib/queue/fulfillment.queue', () => ({
+  enqueueOrderFulfilled: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('@/lib/payments/mercadopago', () => ({
   createMPPreference: vi.fn().mockResolvedValue({
     id: 'MP-PREF-123',
