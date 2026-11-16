@@ -1,17 +1,37 @@
+# Dependencies and build output
 node_modules
 .next
-.git
-.gitignore
-!.env.example
-*.log
-log
 coverage
 .vitest
 *.tsbuildinfo
+*.log
+log
+test-results
+playwright-report
+
+# Git and local/editor files
+.git
+.gitignore
+.vscode
+.idea
+
+# Secrets and local environment files must never enter Docker build context.
+.env
+.env.*
+!.env.example
+.oauth
+*.pem
+*.key
+
+# Local data, backups and generated imports
+backups
+*.dump
+*.sql
+*.bak
+
+# Documentation / local assets not needed for image build
 README.md
 ROADMAP.md
 DEPLOY.md
 doc
 Publicaciones-*.xlsx
-test-results
-playwright-report
