@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthUser } from '@/lib/auth';
 import { ok, unauthorized, serverError } from '@/lib/utils/api';
+import { isEligibleForFirstOrderFreeShipping } from '@/lib/shipping/first-order-free';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,6 +34,11 @@ export async function GET(req: NextRequest) {
       select: { shippingData: true },
     });
 
+    const firstOrderEligible = await isEligibleForFirstOrderFreeShipping({
+      userId: user.id,
+      email: user.email,
+    });
+
     return ok({
       user: {
         id: user.id,
@@ -44,6 +50,7 @@ export async function GET(req: NextRequest) {
       },
       addresses: user.addresses,
       lastShipping: lastOrder?.shippingData ?? null,
+      firstOrderEligible,
     });
   } catch (e) {
     return serverError(e);

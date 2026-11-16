@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
-import { Truck, CreditCard, MapPin, User, Loader2, ShieldCheck } from 'lucide-react';
+import { Truck, CreditCard, MapPin, User, Loader2, ShieldCheck, Gift } from 'lucide-react';
 import { useCartStore } from '@/hooks/useCart';
 import { formatCLP } from '@/lib/utils/api';
 import { CHILE_REGION_NAMES, communesForRegion } from '@/lib/chile/geo';
@@ -25,6 +25,8 @@ export default function CheckoutForm() {
   const [quoting, setQuoting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'WEBPAY' | 'MERCADOPAGO'>('WEBPAY');
   const [freeShippingThreshold, setFreeShippingThreshold] = useState(29990);
+  const [firstOrderEnabled, setFirstOrderEnabled] = useState(true);
+  const [firstOrderEligible, setFirstOrderEligible] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [suggestions, setSuggestions] = useState<{ label: string; street?: string; commune?: string; region?: string }[]>([]);
 
@@ -35,15 +37,20 @@ export default function CheckoutForm() {
   });
 
   const subtotal = total();
-  const qualifiesFree = subtotal >= freeShippingThreshold;
+  const qualifiesFree =
+    subtotal >= freeShippingThreshold ||
+    (firstOrderEnabled && firstOrderEligible);
   const communes = form.region ? communesForRegion(form.region) : [];
 
   useEffect(() => {
     fetch('/api/settings/public')
       .then((r) => r.json())
       .then((d) => {
-        const n = Number(d?.data?.settings?.free_shipping_threshold ?? d?.settings?.free_shipping_threshold);
+        const settings = d?.data?.settings ?? d?.settings ?? {};
+        const n = Number(settings.free_shipping_threshold);
         if (Number.isFinite(n) && n >= 0) setFreeShippingThreshold(n);
+        const fo = String(settings.first_order_free_shipping ?? 'true').toLowerCase();
+        setFirstOrderEnabled(fo === 'true' || fo === '1' || fo === 'yes');
       })
       .catch(() => {});
   }, []);
@@ -65,6 +72,9 @@ export default function CheckoutForm() {
           const addresses = payload.addresses || [];
           const last = payload.lastShipping || {};
           setSavedAddresses(addresses);
+          if (typeof payload.firstOrderEligible === 'boolean') {
+            setFirstOrderEligible(payload.firstOrderEligible);
+          }
           const def = addresses.find((a: any) => a.isDefault) || addresses[0];
           const src = def || last;
           setForm((f) => ({
@@ -87,6 +97,25 @@ export default function CheckoutForm() {
   }, [accessToken]);
 
   const update = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  /** B3: solo POST + onBlur (no debounce por tecleo). Auth usa /api/auth/me. */
+  const onEmailBlur = async () => {
+    if (!firstOrderEnabled) return;
+    if (accessToken) return;
+    const email = form.email.trim();
+    if (!email || !email.includes('@')) return;
+    try {
+      const res = await fetch('/api/shipping/first-order-eligibility', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setFirstOrderEligible(!!(data?.data?.eligible ?? data?.eligible));
+    } catch { /* ignore */ }
+  };
 
   const applySaved = (a: SavedAddress) => {
     setForm((f) => ({
@@ -168,7 +197,14 @@ export default function CheckoutForm() {
         }),
       });
       const orderData = await orderRes.json();
-      if (!orderRes.ok) throw new Error(orderData.error || 'No se pudo crear el pedido');
+      if (!orderRes.ok) {
+        if (orderRes.status === 409) {
+          setFirstOrderEligible(false);
+          toast.error(orderData.error || 'El beneficio de primera compra ya no está disponible. Cotiza el envío e intenta de nuevo.');
+          return;
+        }
+        throw new Error(orderData.error || 'No se pudo crear el pedido');
+      }
       const orderId = orderData.data?.order?.id;
       if (!orderId) throw new Error('Order creation failed');
 
@@ -220,10 +256,25 @@ export default function CheckoutForm() {
 
   const shipping = qualifiesFree ? 0 : (shippingQuote?.price || 0);
   const orderTotal = subtotal + shipping;
+  const showFirstOrderBanner = firstOrderEnabled && firstOrderEligible && subtotal < freeShippingThreshold;
 
   return (
     <div className="grid lg:grid-cols-3 gap-8">
       <div className="lg:col-span-2 space-y-6">
+        {showFirstOrderBanner && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-start gap-3">
+            <Gift className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-sans text-sm font-semibold text-emerald-800">
+                Envío gratis en tu primera compra
+              </p>
+              <p className="font-sans text-xs text-emerald-700 mt-0.5">
+                Beneficio exclusivo para clientes nuevos. Se aplica automáticamente al confirmar el pedido.
+              </p>
+            </div>
+          </div>
+        )}
+
         {savedAddresses.length > 0 && (
           <div className="bg-white rounded-2xl border border-champagne-200 p-4">
             <p className="font-sans text-xs font-semibold text-charcoal-500 mb-2">Direcciones guardadas</p>
@@ -249,7 +300,7 @@ export default function CheckoutForm() {
             </div>
             <div>
               <label className="block font-sans text-xs font-semibold text-charcoal-500 mb-1.5">Email</label>
-              <input type="email" value={form.email} onChange={(e) => update('email', e.target.value)} placeholder="email@ejemplo.com" className="input-field" />
+              <input type="email" value={form.email} onChange={(e) => update('email', e.target.value)} onBlur={onEmailBlur} placeholder="email@ejemplo.com" className="input-field" />
             </div>
             <div>
               <label className="block font-sans text-xs font-semibold text-charcoal-500 mb-1.5">Teléfono</label>
@@ -377,7 +428,7 @@ export default function CheckoutForm() {
             </div>
             <div className="flex justify-between font-sans text-sm text-charcoal-500">
               <span>Envío</span>
-              <span>{qualifiesFree ? 'Gratis' : shipping > 0 ? formatCLP(shipping) : 'Por calcular'}</span>
+              <span>{qualifiesFree ? (showFirstOrderBanner ? 'Gratis (1ª compra)' : 'Gratis') : shipping > 0 ? formatCLP(shipping) : 'Por calcular'}</span>
             </div>
             <div className="flex justify-between font-sans font-bold text-charcoal-700 text-lg border-t border-champagne-100 pt-2">
               <span>Total</span><span className="text-primary-600">{formatCLP(orderTotal)}</span>

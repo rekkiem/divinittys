@@ -30,6 +30,7 @@ const FIELD_GROUPS = [
     title: 'Envíos', icon: Truck,
     fields: [
       { key: 'free_shipping_threshold', label: 'Envío gratis desde (CLP)', placeholder: '50000', type: 'number' },
+      { key: 'first_order_free_shipping', label: 'Envío gratis en 1ª compra', placeholder: '', type: 'select_bool' },
       { key: 'shipping_message',        label: 'Mensaje de envío',         placeholder: 'Envíos a todo Chile en 24-48hrs', type: 'text' },
     ],
   },
@@ -92,7 +93,6 @@ export default function ConfiguracionClient({ initialSettings }: { initialSettin
 
   return (
     <div className="space-y-6">
-      {/* Save button */}
       {dirty && (
         <div className="sticky top-0 z-10 bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center justify-between">
           <p className="font-sans text-sm text-amber-700 font-medium">Tienes cambios sin guardar</p>
@@ -117,14 +117,27 @@ export default function ConfiguracionClient({ initialSettings }: { initialSettin
                 {type === 'textarea' ? (
                   <textarea value={settings[key] ?? ''} onChange={e => setValue(key, e.target.value)}
                     placeholder={placeholder} rows={3} className={`${fieldCls} resize-none`} />
+                ) : type === 'select_bool' ? (
+                  <select
+                    value={['true', '1', 'yes'].includes(String(settings[key] ?? 'true').toLowerCase()) ? 'true' : 'false'}
+                    onChange={e => setValue(key, e.target.value)}
+                    className={fieldCls}
+                  >
+                    <option value="true">Activado</option>
+                    <option value="false">Desactivado</option>
+                  </select>
                 ) : (
                   <input type={type} value={settings[key] ?? ''} onChange={e => setValue(key, e.target.value)}
                     placeholder={placeholder} className={fieldCls} />
                 )}
-                {/* Preview for numeric fields */}
                 {type === 'number' && settings[key] && key.includes('threshold') && (
                   <p className="font-sans text-xs text-charcoal-400 mt-1">
                     = {formatCLP(Number(settings[key]))}
+                  </p>
+                )}
+                {key === 'first_order_free_shipping' && (
+                  <p className="font-sans text-xs text-charcoal-400 mt-1">
+                    Solo la primera orden pagada (user o guest por email). Órdenes pendientes con el beneficio bloquean un segundo uso hasta cancelarse.
                   </p>
                 )}
               </div>
@@ -133,7 +146,6 @@ export default function ConfiguracionClient({ initialSettings }: { initialSettin
         </div>
       ))}
 
-      {/* Save bottom */}
       <button onClick={save} disabled={saving || !dirty}
         className="btn-primary flex items-center gap-2 disabled:opacity-60">
         {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}

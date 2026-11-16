@@ -51,9 +51,9 @@ jobs:
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
-      # Use npm ci (requires lockfile) — fast, reproducible, CI-safe
+      # --legacy-peer-deps: peers de hono/nodemailer (mismo criterio que Dockerfile)
       - name: Install dependencies
-        run: npm ci --include=dev
+        run: npm ci --include=dev --legacy-peer-deps
 
       # Generate Prisma client without downloading engine binaries
       - name: Generate Prisma Client
@@ -104,7 +104,7 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci --include=dev
+        run: npm ci --include=dev --legacy-peer-deps
 
       - name: Generate Prisma Client
         run: npx prisma generate
@@ -173,7 +173,7 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci --include=dev
+        run: npm ci --include=dev --legacy-peer-deps
 
       # Cache Playwright binaries separately (large download, rarely changes)
       - name: Cache Playwright browsers

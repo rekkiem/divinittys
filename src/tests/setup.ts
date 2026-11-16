@@ -18,6 +18,7 @@ process.env.REDIS_URL         = 'redis://localhost:6379';
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     $queryRaw:    vi.fn().mockResolvedValue([{ result: 1 }]),
+    $executeRaw:  vi.fn().mockResolvedValue(0),
     $transaction: vi.fn().mockImplementation(async (fn: any) => {
       if (typeof fn === 'function') return fn(mockTx);
       return Promise.all(fn);
@@ -60,6 +61,7 @@ vi.mock('@/lib/prisma', () => ({
     order: {
       findUnique: vi.fn(),
       findMany:   vi.fn().mockResolvedValue([]),
+      create:     vi.fn(),
       update:     vi.fn(),
       count:      vi.fn().mockResolvedValue(0),
       aggregate:  vi.fn().mockResolvedValue({ _sum: { total: 0 } }),
@@ -75,10 +77,11 @@ vi.mock('@/lib/prisma', () => ({
       updateMany: vi.fn(),
     },
     setting: {
-      findMany: vi.fn().mockResolvedValue([]),
-      upsert:   vi.fn(),
-      update:   vi.fn(),
-      create:   vi.fn(),
+      findUnique: vi.fn(),
+      findMany:   vi.fn().mockResolvedValue([]),
+      upsert:     vi.fn(),
+      update:     vi.fn(),
+      create:     vi.fn(),
     },
     payment: {
       findFirst:  vi.fn(),
@@ -104,12 +107,16 @@ vi.mock('@/lib/prisma', () => ({
 
 // Mock transaction context (used in $transaction callback)
 const mockTx = {
+  $executeRaw: vi.fn().mockResolvedValue(0),
   product:   { create: vi.fn(), update: vi.fn(), delete: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
   inventory: { create: vi.fn(), upsert: vi.fn(), updateMany: vi.fn() },
   productVariant: { update: vi.fn(), updateMany: vi.fn() },
   payment:   { findUnique: vi.fn(), update: vi.fn() },
-  order:     { update: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
+  order:     { create: vi.fn(), update: vi.fn(), count: vi.fn().mockResolvedValue(0), findMany: vi.fn().mockResolvedValue([]) },
   orderItem: { findMany: vi.fn().mockResolvedValue([]) },
+  address:   { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+  coupon:    { update: vi.fn() },
+  setting:   { findUnique: vi.fn() },
 };
 
 // ── Meilisearch Mock ──────────────────────────────────────
