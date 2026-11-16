@@ -26,7 +26,6 @@ playwright-report
 # Local data, backups and generated imports
 backups
 *.dump
-*.sql
 *.bak
 
 # Documentation / local assets not needed for image build
