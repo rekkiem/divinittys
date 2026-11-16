@@ -42,9 +42,9 @@ TOOLS_COMPOSE=( "${COMPOSE[@]}" --profile tools )
 log() { printf '\n[OK] %s\n' "$*"; }
 die() { printf '\n[ERROR] %s\n' "$*" >&2; exit 1; }
 
-# Never proceed with obvious placeholder secrets.
-if grep -Eq '__CHANGE_ME__|__CH_|your_.*_here|CHANGE_ME' "$ENV_FILE"; then
-  die "$ENV_FILE contiene posibles placeholders. Revísalo sin compartir sus valores."
+# Check placeholders only in active KEY=value assignments, not comments.
+if grep -Eq '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=.*(__CHANGE_ME__|__CH_|your_.*_here|CHANGE_ME)' "$ENV_FILE"; then
+  die "$ENV_FILE contiene posibles placeholders en variables activas. Revísalo sin compartir sus valores."
 fi
 
 # Validate Compose interpolation before changing production.
