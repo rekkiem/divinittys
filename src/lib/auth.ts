@@ -65,6 +65,25 @@ export function getTokenFromRequest(req: NextRequest): string | null {
   return null;
 }
 
+/** Todos los tokens candidatos: Bearer primero, cookie después (sin duplicados). */
+export function getTokenCandidates(req: NextRequest): string[] {
+  const out: string[] = [];
+  const authHeader = req.headers.get('authorization');
+  if (authHeader?.startsWith('Bearer ')) out.push(authHeader.substring(7));
+  const cookie = req.cookies.get('access_token')?.value;
+  if (cookie && !out.includes(cookie)) out.push(cookie);
+  return out;
+}
+
+/** Primer token candidato que verifica. Un Bearer viejo (localStorage) no debe tapar una cookie válida. */
+async function resolveValidPayload(req: NextRequest): Promise<JWTPayload | null> {
+  for (const token of getTokenCandidates(req)) {
+    const payload = await verifyAccessToken(token);
+    if (payload) return payload;
+  }
+  return null;
+}
+
 /**
  * Obtiene el usuario autenticado desde la request.
  * FIX: usa findFirst (no findUnique) para aceptar filtros compuestos.
@@ -72,10 +91,7 @@ export function getTokenFromRequest(req: NextRequest): string | null {
  * cuando solo se necesita saber si es admin.
  */
 export async function getAuthUser(req: NextRequest) {
-  const token = getTokenFromRequest(req);
-  if (!token) return null;
-
-  const payload = await verifyAccessToken(token);
+  const payload = await resolveValidPayload(req);
   if (!payload) return null;
 
   // FIX: findFirst en lugar de findUnique para poder filtrar por isActive
@@ -92,9 +108,7 @@ export async function getAuthUser(req: NextRequest) {
  * Útil para checks de rol en rutas de alta frecuencia.
  */
 export async function getAuthUserFromToken(req: NextRequest): Promise<JWTPayload | null> {
-  const token = getTokenFromRequest(req);
-  if (!token) return null;
-  return verifyAccessToken(token);
+  return resolveValidPayload(req);
 }
 
 /** Middleware helper reusable */

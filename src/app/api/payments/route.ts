@@ -14,7 +14,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { createWebpayTransaction, commitWebpayTransaction } from '@/lib/payments/webpay';
-import { createMPPreference, isSandbox } from '@/lib/payments/mercadopago';
+import { createMPPreference, isSandbox, mpAmountMatches } from '@/lib/payments/mercadopago';
+import { logger } from '@/lib/logger';
 import { markPaymentFailed, markPaymentPaid } from '@/lib/payments/payment-helpers';
 import { verifyMercadoPagoSignature } from '@/lib/payments/mercadopago-webhook';
 import { ok, badRequest, notFound, serverError } from '@/lib/utils/api';
@@ -124,15 +125,28 @@ export async function POST(req: NextRequest) {
       const order = await findOrderAndValidate(orderId);
       const total = Number(order.total);
 
+      // MP cobra la suma de items: tiene que incluir envío y descuentos, o el cliente paga de menos.
+      const expectedTotal = Math.round(total);
+      let mpItems: any[] = order.items.map((item: any) => ({
+        id: item.productId,
+        title: item.name,
+        quantity: item.quantity,
+        unit_price: Number(item.price),
+        picture_url: item.product?.images?.[0]?.url,
+      }));
+      const shippingCost = Math.round(Number(order.shippingAmount || 0));
+      if (shippingCost > 0) {
+        mpItems.push({ id: 'shipping', title: 'Envío', quantity: 1, unit_price: shippingCost });
+      }
+      const mpSum = mpItems.reduce((a: number, i: any) => a + Math.round(i.unit_price) * i.quantity, 0);
+      if (Number(order.discountAmount || 0) > 0 || mpSum !== expectedTotal) {
+        // Con descuentos MP no admite precios negativos: un solo ítem con el total exacto.
+        mpItems = [{ id: order.orderNumber, title: `Pedido ${order.orderNumber}`, quantity: 1, unit_price: expectedTotal }];
+      }
+
       const mp = await createMPPreference(
         {
-          items: order.items.map((item: any) => ({
-            id: item.productId,
-            title: item.name,
-            quantity: item.quantity,
-            unit_price: Number(item.price),
-            picture_url: item.product?.images?.[0]?.url,
-          })),
+          items: mpItems,
           backUrls: {
             success: `${APP_URL}/checkout/mp-return?status=success&orderId=${orderId}`,
             failure: `${APP_URL}/checkout/mp-return?status=failure&orderId=${orderId}`,
@@ -210,6 +224,15 @@ export async function POST(req: NextRequest) {
 
       if (!payment) {
         return notFound('Pago/pedido no encontrado');
+      }
+
+      if (mpPayment.status === 'approved' && !mpAmountMatches(mpPayment, payment.order)) {
+        logger.error('mp.amount_mismatch', {
+          orderId: payment.orderId,
+          paid: Number(mpPayment.transaction_amount),
+          expected: Number(payment.order.total),
+        });
+        return ok({ success: false, status: 'amount_mismatch', message: 'El monto pagado no coincide con el pedido. Contacta a soporte.' });
       }
 
       if (mpPayment.status === 'approved') {

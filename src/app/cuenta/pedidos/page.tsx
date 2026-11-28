@@ -60,7 +60,7 @@ type OrderRow = {
 const STATUS_LABEL: Record<string, string> = {
   PENDING: 'Pendiente',
   CONFIRMED: 'Confirmado',
-  PROCESSING: 'En preparaci\u00f3n',
+  PROCESSING: 'En preparación',
   SHIPPED: 'Enviado',
   DELIVERED: 'Entregado',
   CANCELLED: 'Cancelado',
@@ -158,17 +158,17 @@ export default function PedidosPage() {
         </Link>
         <h1 className="font-display text-3xl font-light text-charcoal-700 mb-2">Mis pedidos</h1>
         <p className="font-sans text-sm text-charcoal-400 mb-8">
-          Revis\u00e1 el detalle y el estado de tus compras
+          Revisá el detalle y el estado de tus compras
         </p>
 
-        {loading && <p className="text-charcoal-400 font-sans">Cargando\u2026</p>}
+        {loading && <p className="text-charcoal-400 font-sans">Cargando…</p>}
 
         {!loading && orders.length === 0 && (
           <div className="text-center py-16 rounded-2xl border border-champagne-200 bg-white">
             <Package className="w-12 h-12 text-champagne-300 mx-auto mb-4" />
-            <p className="font-sans text-charcoal-500 mb-4">A\u00fan no tienes pedidos</p>
+            <p className="font-sans text-charcoal-500 mb-4">Aún no tienes pedidos</p>
             <Link href="/productos" className="btn-primary">
-              Ir al cat\u00e1logo
+              Ir al catálogo
             </Link>
           </div>
         )}
@@ -217,7 +217,7 @@ export default function PedidosPage() {
                     })}
                     {itemCount > 0 && (
                       <span>
-                        {' '}\n                        \u00b7 {itemCount} {itemCount === 1 ? 'producto' : 'productos'}
+                        {' '}· {itemCount} {itemCount === 1 ? 'producto' : 'productos'}
                       </span>
                     )}
                   </p>
@@ -320,7 +320,7 @@ export default function PedidosPage() {
                             {item.name}
                           </p>
                           <p className="font-sans text-xs text-charcoal-400 mt-0.5">
-                            {item.quantity} u. \u00b7 {formatCLP(Number(item.price))} c/u
+                            {item.quantity} u. · {formatCLP(Number(item.price))} c/u
                           </p>
                         </div>
                         <p className="font-sans text-sm font-semibold text-charcoal-700 shrink-0">
@@ -344,7 +344,7 @@ export default function PedidosPage() {
                   </div>
                 )}
                 <div className="flex justify-between text-sm font-sans text-charcoal-500">
-                  <span>Env\u00edo</span>
+                  <span>Envío</span>
                   <span>
                     {Number(selected.shippingAmount || 0) === 0
                       ? 'Gratis'
@@ -361,7 +361,7 @@ export default function PedidosPage() {
                 <section className="rounded-xl border border-champagne-100 p-4">
                   <div className="flex items-center gap-2 mb-2">
                     <MapPin className="w-4 h-4 text-primary-500" />
-                    <h3 className="font-sans text-sm font-semibold text-charcoal-600">Direcci\u00f3n de env\u00edo</h3>
+                    <h3 className="font-sans text-sm font-semibold text-charcoal-600">Dirección de envío</h3>
                   </div>
                   <p className="font-sans text-sm text-charcoal-600">
                     {[selected.shippingData.firstName, selected.shippingData.lastName]
@@ -396,8 +396,8 @@ export default function PedidosPage() {
                   <p className="font-sans text-sm text-charcoal-500">
                     {selected.payment.provider === 'MERCADOPAGO'
                       ? 'MercadoPago'
-                      : selected.payment.provider || '\u2014'}
-                    {selected.payment.paymentMethod ? ` \u00b7 ${selected.payment.paymentMethod}` : ''}
+                      : selected.payment.provider || '—'}
+                    {selected.payment.paymentMethod ? ` · ${selected.payment.paymentMethod}` : ''}
                   </p>
                   {selected.payment.paidAt && (
                     <p className="font-sans text-xs text-charcoal-400 mt-1">

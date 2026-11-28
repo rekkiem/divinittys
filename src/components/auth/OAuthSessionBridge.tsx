@@ -16,6 +16,37 @@ export default function OAuthSessionBridge() {
   const router = useRouter();
   const pathname = usePathname();
   const once = useRef(false);
+  const validated = useRef(false);
+
+  // Sesión persistida en localStorage pero JWT vencido/ inválido (la UI parece logueada y la API responde 401):
+  // intentar refresh por cookie; si no hay, limpiar el estado para que el usuario vuelva a iniciar sesión.
+  useEffect(() => {
+    if (validated.current || status === 'loading' || !user) return;
+    validated.current = true;
+    (async () => {
+      try {
+        const me = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
+        if (me.ok) {
+          await useAuthStore.getState().refreshToken();
+          return;
+        }
+        if (await useAuthStore.getState().refreshToken()) return;
+        if (status === 'authenticated') {
+          const ex = await fetch('/api/oauth/exchange', { method: 'POST', credentials: 'include' });
+          const data = await ex.json().catch(() => ({}));
+          if (ex.ok && data.success) {
+            setUser(data.data.user);
+            setToken(data.data.accessToken);
+            return;
+          }
+        }
+        setUser(null);
+        setToken(null);
+      } catch {
+        /* sin red: no tocar el estado */
+      }
+    })();
+  }, [status, user, setUser, setToken]);
 
   useEffect(() => {
     if (once.current) return;

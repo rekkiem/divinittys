@@ -98,6 +98,13 @@ export async function getMPPreference(preferenceId: string) {
   return res.json();
 }
 
+/** El monto aprobado por MP debe coincidir (±1 CLP) con el total del pedido. */
+export function mpAmountMatches(mpPayment: { transaction_amount?: unknown }, order: { total: unknown }): boolean {
+  const paid = Number(mpPayment?.transaction_amount);
+  const expected = Number(order?.total);
+  return Number.isFinite(paid) && Number.isFinite(expected) && Math.abs(paid - expected) <= 1;
+}
+
 export function isSandbox(): boolean {
   return !MP_ACCESS_TOKEN.startsWith('APP_USR');
 }

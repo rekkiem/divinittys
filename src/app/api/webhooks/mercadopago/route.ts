@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { markPaymentFailed, markPaymentPaid } from '@/lib/payments/payment-helpers';
 import { verifyMercadoPagoSignature } from '@/lib/payments/mercadopago-webhook';
+import { mpAmountMatches } from '@/lib/payments/mercadopago';
 import { ok, serverError } from '@/lib/utils/api';
 import { logger } from '@/lib/logger';
 
@@ -56,7 +57,17 @@ export async function POST(req: NextRequest) {
       if (mpPayment.external_reference) {
         const payment = await prisma.payment.findFirst({
           where: { order: { orderNumber: String(mpPayment.external_reference) } },
+          include: { order: { select: { total: true } } },
         });
+
+        if (payment && mpPayment.status === 'approved' && !mpAmountMatches(mpPayment, payment.order)) {
+          logger.error('mp.amount_mismatch', {
+            orderId: payment.orderId,
+            paid: Number(mpPayment.transaction_amount),
+            expected: Number(payment.order.total),
+          });
+          return ok({ received: true, flagged: 'amount_mismatch' });
+        }
 
         if (payment && mpPayment.status === 'approved') {
           await markPaymentPaid({

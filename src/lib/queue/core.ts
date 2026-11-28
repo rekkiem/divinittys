@@ -5,6 +5,7 @@
  *   para no romper `next build` al importar payment-helpers → fulfillment.
  */
 import { Queue, Worker, Job, type ConnectionOptions } from 'bullmq';
+import { logger } from '@/lib/logger';
 
 export type QueueJob = Job;
 
@@ -73,8 +74,19 @@ export function createWorker(
   name: string,
   processor: (job: Job) => Promise<unknown>
 ): Worker {
-  return new Worker(queueName(name), processor, {
+  const worker = new Worker(queueName(name), processor, {
     connection: getConnection(),
     concurrency: 5,
   });
+  // Sin estos handlers los fallos de jobs (p. ej. SMTP) son invisibles en los logs.
+  worker.on('failed', (job, err) =>
+    logger.error('queue.job_failed', {
+      queue: name, jobId: job?.id, jobName: job?.name, attempt: job?.attemptsMade,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  );
+  worker.on('error', (err) =>
+    logger.error('queue.worker_error', { queue: name, error: err instanceof Error ? err.message : String(err) })
+  );
+  return worker;
 }
